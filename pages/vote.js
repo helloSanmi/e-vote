@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import io from "socket.io-client";
 
 const serverUrl = process.env.NEXT_PUBLIC_API_URL;
+const placeholderImage = "/placeholder.svg";
 
 export default function Vote() {
   const [socket, setSocket] = useState(null);
@@ -202,7 +203,7 @@ export default function Vote() {
                         ${isDisabled ? "opacity-50 pointer-events-none" : ""}`}
                     >
                       <img
-                        src={candidate.photoUrl || "/placeholder.png"}
+                        src={candidate.photoUrl || placeholderImage}
                         alt={candidate.name}
                         className="w-24 h-24 rounded-full mb-4 object-cover"
                       />

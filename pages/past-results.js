@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 
 const serverUrl = process.env.NEXT_PUBLIC_API_URL;
+const placeholderImage = "/placeholder.svg";
 
 export default function PastResults() {
   const [periods, setPeriods] = useState([]);
@@ -103,7 +104,7 @@ export default function PastResults() {
             {candidates.map((c) => (
               <div key={c.id} className="border p-4 rounded flex flex-col items-center bg-gray-50">
                 <img
-                  src={c.photoUrl || "/placeholder.png"}
+                  src={c.photoUrl || placeholderImage}
                   alt={c.name}
                   className="w-24 h-24 rounded-full mb-2 object-cover"
                 />
@@ -133,7 +134,7 @@ export default function PastResults() {
                 className="border rounded-lg p-4 bg-gray-50 flex flex-col items-center text-center"
               >
                 <img
-                  src={result.photoUrl || "/placeholder.png"}
+                  src={result.photoUrl || placeholderImage}
                   alt={result.name}
                   className="w-24 h-24 rounded-full mb-4 object-cover"
                 />

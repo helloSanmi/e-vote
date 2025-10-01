@@ -1,12 +1,15 @@
 require('@testing-library/jest-dom');
 
 jest.mock('socket.io-client', () => {
-  return jest.fn(() => ({
+  const socketMock = {
     on: jest.fn(),
     off: jest.fn(),
     close: jest.fn(),
     emit: jest.fn(),
-  }));
+  };
+  const factory = jest.fn(() => socketMock);
+  factory.__socketMock = socketMock;
+  return factory;
 });
 
 if (typeof window !== 'undefined') {

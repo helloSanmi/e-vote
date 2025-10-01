@@ -1,6 +1,6 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
-const { getDbPool } = require("../db");
+const { queryOne, withTransaction } = require("../db");
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -55,16 +55,11 @@ router.post("/", authMiddleware, async (req, res) => {
   }
 
   try {
-    const pool = await getDbPool();
-    const [periodRows] = await pool.execute(
-      "SELECT * FROM VotingPeriod ORDER BY id DESC LIMIT 1"
-    );
+    const period = await queryOne("SELECT TOP (1) * FROM VotingPeriod ORDER BY id DESC");
 
-    if (periodRows.length === 0) {
+    if (!period) {
       return res.status(400).json({ error: "No voting period" });
     }
-
-    const period = periodRows[0];
     const now = new Date();
     const start = new Date(period.startTime);
     const end = new Date(period.endTime);
@@ -73,8 +68,8 @@ router.post("/", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "Voting is not currently open" });
     }
 
-    const [[candidate]] = await pool.execute(
-      "SELECT id FROM Candidates WHERE id = ? AND periodId = ? AND published = 1",
+    const candidate = await queryOne(
+      `SELECT id FROM Candidates WHERE id = ? AND periodId = ? AND published = 1`,
       [candidateId, period.id]
     );
 
@@ -82,8 +77,8 @@ router.post("/", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "Candidate not available for this period" });
     }
 
-    const [[existingVote]] = await pool.execute(
-      "SELECT id FROM Votes WHERE userId = ? AND periodId = ? LIMIT 1",
+    const existingVote = await queryOne(
+      `SELECT TOP (1) id FROM Votes WHERE userId = ? AND periodId = ?`,
       [userId, period.id]
     );
 
@@ -91,37 +86,31 @@ router.post("/", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "User already voted" });
     }
 
-    const conn = await pool.getConnection();
-
-    try {
-      await conn.beginTransaction();
-
-      await conn.execute(
-        "INSERT INTO Votes (userId, candidateId, periodId) VALUES (?, ?, ?)",
+    await withTransaction(async (tx) => {
+      await tx.execute(
+        `INSERT INTO Votes (userId, candidateId, periodId) VALUES (?, ?, ?)`,
         [userId, candidateId, period.id]
       );
 
-      await conn.execute(
-        "UPDATE Candidates SET votes = votes + 1 WHERE id = ? AND periodId = ?",
+      const voteUpdate = await tx.execute(
+        `UPDATE Candidates SET votes = votes + 1 WHERE id = ? AND periodId = ?`,
         [candidateId, period.id]
       );
 
-      await conn.execute(
-        "UPDATE Users SET hasVoted = 1 WHERE id = ?",
+      if (!voteUpdate.rowsAffected?.[0]) {
+        const updateError = new Error("Candidate update failed");
+        updateError.code = "CANDIDATE_UPDATE_FAILED";
+        throw updateError;
+      }
+
+      await tx.execute(
+        `UPDATE Users SET hasVoted = 1 WHERE id = ?`,
         [userId]
       );
+    });
 
-      await conn.commit();
-
-      emitUpdate(req, "voteCast", { periodId: period.id, candidateId });
-      res.status(201).json({ message: "Vote cast" });
-    } catch (error) {
-      await conn.rollback();
-      console.error("Vote transaction error:", error);
-      res.status(500).json({ error: "Vote failed" });
-    } finally {
-      conn.release();
-    }
+    emitUpdate(req, "voteCast", { periodId: period.id, candidateId });
+    res.status(201).json({ message: "Vote cast" });
   } catch (error) {
     console.error("Vote error:", error);
     res.status(500).json({ error: "Vote failed" });

@@ -1,6 +1,9 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
-const { getDbPool } = require("../db");
+const fs = require("fs");
+const path = require("path");
+const { randomUUID } = require("crypto");
+const { query, queryOne, execute, withTransaction } = require("../db");
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -10,6 +13,79 @@ const normalizeEnvList = (value) =>
     .split(",")
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
+
+const UPLOADS_DIR = path.join(__dirname, "..", "uploads");
+
+const ensureUploadsDir = () => {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+};
+
+ensureUploadsDir();
+
+const normalizePhotoUrlValue = (value) => {
+  if (value === null || value === undefined) return null;
+  const stringValue = typeof value === "string" ? value : String(value);
+  const trimmed = stringValue.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith("/")) {
+    return trimmed;
+  }
+  return `/${trimmed}`;
+};
+
+const saveBase64Image = (base64String) => {
+  if (!base64String) return null;
+
+  try {
+    ensureUploadsDir();
+    let mimeType;
+    let dataPart = base64String;
+
+    const dataUrlMatch = base64String.match(/^data:(.+);base64,(.+)$/);
+    if (dataUrlMatch) {
+      mimeType = dataUrlMatch[1];
+      dataPart = dataUrlMatch[2];
+    }
+
+    const sanitizedBase64 = dataPart.replace(/\s/g, "");
+    const buffer = Buffer.from(sanitizedBase64, "base64");
+
+    let extension = "png";
+    if (mimeType) {
+      const parsedExt = mimeType.split("/")[1];
+      if (parsedExt) {
+        extension = parsedExt.split("+")[0];
+      }
+    }
+
+    const fileName = `${randomUUID()}.${extension || "png"}`;
+    const filePath = path.join(UPLOADS_DIR, fileName);
+    fs.writeFileSync(filePath, buffer);
+
+    return `/uploads/${fileName}`;
+  } catch (error) {
+    console.error("Failed to save uploaded image", error);
+    return null;
+  }
+};
+
+const deleteUploadedFile = (photoUrl) => {
+  if (!photoUrl || !photoUrl.startsWith("/uploads/")) {
+    return;
+  }
+  const relativePart = photoUrl.replace(/^\/uploads\//, "");
+  const filePath = path.join(UPLOADS_DIR, relativePart);
+  fs.promises.unlink(filePath).catch(() => {});
+};
+
+const withNormalizedPhoto = (candidate) => {
+  if (!candidate) return candidate;
+  return { ...candidate, photoUrl: normalizePhotoUrlValue(candidate.photoUrl) };
+};
+
+const normalizeCandidateRows = (rows = []) => rows.map(withNormalizedPhoto);
 
 const ADMIN_EMAILS = normalizeEnvList(process.env.ADMIN_EMAILS);
 const ADMIN_USERNAMES = normalizeEnvList(process.env.ADMIN_USERNAMES);
@@ -61,10 +137,8 @@ const adminMiddleware = async (req, res, next) => {
   }
 };
 
-const getLatestPeriod = async (pool) => {
-  const [rows] = await pool.execute("SELECT * FROM VotingPeriod ORDER BY id DESC LIMIT 1");
-  return rows.length ? rows[0] : null;
-};
+const getLatestPeriod = async () =>
+  queryOne("SELECT TOP (1) * FROM VotingPeriod ORDER BY id DESC");
 
 router.post("/start-voting", adminMiddleware, async (req, res) => {
   const { startTime, endTime } = req.body || {};
@@ -85,8 +159,7 @@ router.post("/start-voting", adminMiddleware, async (req, res) => {
   }
 
   try {
-    const pool = await getDbPool();
-    const latestPeriod = await getLatestPeriod(pool);
+    const latestPeriod = await getLatestPeriod();
 
     if (latestPeriod) {
       const periodEnded =
@@ -99,52 +172,54 @@ router.post("/start-voting", adminMiddleware, async (req, res) => {
       }
     }
 
-    const conn = await pool.getConnection();
-
-    try {
-      await conn.beginTransaction();
-
-      const [result] = await conn.execute(
-        "INSERT INTO VotingPeriod (startTime, endTime, resultsPublished, forcedEnded) VALUES (?, ?, 0, 0)",
-        [start.toISOString().slice(0, 19).replace("T", " "), end.toISOString().slice(0, 19).replace("T", " ")]
-      );
-      const periodId = result.insertId;
-
-      const [updateResult] = await conn.execute(
-        "UPDATE Candidates SET periodId = ?, published = 1, votes = 0 WHERE periodId IS NULL AND published = 0",
-        [periodId]
+    const periodId = await withTransaction(async (tx) => {
+      const insertResult = await tx.execute(
+        `INSERT INTO VotingPeriod (startTime, endTime, resultsPublished, forcedEnded)
+         OUTPUT INSERTED.id
+         VALUES (?, ?, 0, 0)`,
+        [start, end]
       );
 
-      if (updateResult.affectedRows === 0) {
-        await conn.rollback();
-        return res.status(400).json({ error: "No unpublished candidates available to start voting" });
+      const newPeriodId = insertResult.recordset?.[0]?.id;
+      if (!newPeriodId) {
+        throw new Error("Failed to create voting period");
       }
 
-      await conn.execute("UPDATE Users SET hasVoted = 0");
+      const updateResult = await tx.execute(
+        `UPDATE Candidates
+         SET periodId = ?, published = 1, votes = 0
+         WHERE periodId IS NULL AND published = 0`,
+        [newPeriodId]
+      );
 
-      await conn.commit();
+      if (!updateResult.rowsAffected?.[0]) {
+        const noCandidatesError = new Error("No unpublished candidates available");
+        noCandidatesError.code = "NO_CANDIDATES";
+        throw noCandidatesError;
+      }
 
-      emitUpdate(req, "votingStarted", { periodId });
-      emitUpdate(req, "candidatesUpdated");
+      await tx.execute("UPDATE Users SET hasVoted = 0");
 
-      res.json({ message: "Voting started", periodId });
-    } catch (error) {
-      await conn.rollback();
-      console.error("Start voting error:", error);
-      res.status(500).json({ error: "Start failed" });
-    } finally {
-      conn.release();
-    }
+      return newPeriodId;
+    });
+
+    emitUpdate(req, "votingStarted", { periodId });
+    emitUpdate(req, "candidatesUpdated");
+
+    res.json({ message: "Voting started", periodId });
   } catch (error) {
-    console.error("Start voting outer error:", error);
+    if (error.code === "NO_CANDIDATES") {
+      return res.status(400).json({ error: "No unpublished candidates available to start voting" });
+    }
+
+    console.error("Start voting error:", error);
     res.status(500).json({ error: "Start failed" });
   }
 });
 
 router.post("/publish-results", adminMiddleware, async (req, res) => {
   try {
-    const pool = await getDbPool();
-    const latestPeriod = await getLatestPeriod(pool);
+    const latestPeriod = await getLatestPeriod();
     if (!latestPeriod) {
       return res.status(400).json({ error: "No voting period found" });
     }
@@ -160,7 +235,7 @@ router.post("/publish-results", adminMiddleware, async (req, res) => {
       return res.status(400).json({ error: "Voting still ongoing" });
     }
 
-    await pool.execute("UPDATE VotingPeriod SET resultsPublished = 1 WHERE id = ?", [latestPeriod.id]);
+    await execute("UPDATE VotingPeriod SET resultsPublished = 1 WHERE id = ?", [latestPeriod.id]);
     emitUpdate(req, "resultsPublished", { periodId: latestPeriod.id });
     res.json({ message: "Results published" });
   } catch (error) {
@@ -171,8 +246,7 @@ router.post("/publish-results", adminMiddleware, async (req, res) => {
 
 router.post("/end-voting", adminMiddleware, async (req, res) => {
   try {
-    const pool = await getDbPool();
-    const latestPeriod = await getLatestPeriod(pool);
+    const latestPeriod = await getLatestPeriod();
     if (!latestPeriod) {
       return res.status(400).json({ error: "No voting period found" });
     }
@@ -181,7 +255,7 @@ router.post("/end-voting", adminMiddleware, async (req, res) => {
       return res.status(400).json({ error: "Voting already forced to end" });
     }
 
-    await pool.execute("UPDATE VotingPeriod SET forcedEnded = 1 WHERE id = ?", [latestPeriod.id]);
+    await execute("UPDATE VotingPeriod SET forcedEnded = 1 WHERE id = ?", [latestPeriod.id]);
     emitUpdate(req, "votingEnded", { periodId: latestPeriod.id });
     res.json({ message: "Voting ended early" });
   } catch (error) {
@@ -191,21 +265,37 @@ router.post("/end-voting", adminMiddleware, async (req, res) => {
 });
 
 router.post("/add-candidate", adminMiddleware, async (req, res) => {
-  const { name, lga, photoUrl } = req.body || {};
-  if (!name || !lga) {
+  const { name, lga, photoUrl, photoData } = req.body || {};
+  const trimmedName = typeof name === "string" ? name.trim() : "";
+  const trimmedLga = typeof lga === "string" ? lga.trim() : "";
+  let normalizedPhotoUrl = normalizePhotoUrlValue(photoUrl);
+  let storedFilePath = null;
+
+  if (photoData) {
+    const savedPath = saveBase64Image(photoData);
+    if (savedPath) {
+      storedFilePath = savedPath;
+      normalizedPhotoUrl = savedPath;
+    }
+  }
+
+  if (!trimmedName || !trimmedLga) {
     return res.status(400).json({ error: "Candidate name and LGA are required" });
   }
 
   try {
-    const pool = await getDbPool();
-    await pool.execute(
-      "INSERT INTO Candidates (name, lga, photoUrl, periodId, published, votes) VALUES (?, ?, ?, NULL, 0, 0)",
-      [name.trim(), lga.trim(), photoUrl || null]
+    await execute(
+      `INSERT INTO Candidates (name, lga, photoUrl, periodId, published, votes)
+       VALUES (?, ?, ?, NULL, 0, 0)`,
+      [trimmedName, trimmedLga, normalizedPhotoUrl]
     );
 
     emitUpdate(req, "candidatesUpdated");
     res.status(201).json({ message: "Candidate added" });
   } catch (error) {
+    if (storedFilePath) {
+      deleteUploadedFile(storedFilePath);
+    }
     console.error("Add candidate error:", error);
     res.status(500).json({ error: "Add candidate failed" });
   }
@@ -218,15 +308,21 @@ router.delete("/remove-candidate", adminMiddleware, async (req, res) => {
   }
 
   try {
-    const pool = await getDbPool();
-    const [result] = await pool.execute(
-      "DELETE FROM Candidates WHERE id = ? AND published = 0 AND periodId IS NULL",
+    const candidate = await queryOne(
+      `SELECT photoUrl FROM Candidates WHERE id = ? AND published = 0 AND periodId IS NULL`,
       [candidateId]
     );
 
-    if (result.affectedRows === 0) {
+    if (!candidate) {
       return res.status(404).json({ error: "Candidate not found or already published" });
     }
+
+    await execute(
+      `DELETE FROM Candidates WHERE id = ? AND published = 0 AND periodId IS NULL`,
+      [candidateId]
+    );
+
+    deleteUploadedFile(candidate.photoUrl);
 
     emitUpdate(req, "candidatesUpdated");
     res.json({ message: "Candidate removed" });
@@ -238,21 +334,20 @@ router.delete("/remove-candidate", adminMiddleware, async (req, res) => {
 
 router.get("/get-candidates", adminMiddleware, async (req, res) => {
   try {
-    const pool = await getDbPool();
-    const latestPeriod = await getLatestPeriod(pool);
+    const latestPeriod = await getLatestPeriod();
 
     if (latestPeriod) {
-      const [rows] = await pool.execute(
-        "SELECT * FROM Candidates WHERE periodId = ? OR periodId IS NULL ORDER BY createdAt DESC",
+      const rows = await query(
+        `SELECT * FROM Candidates WHERE periodId = ? OR periodId IS NULL ORDER BY createdAt DESC`,
         [latestPeriod.id]
       );
-      return res.json(rows);
+      return res.json(normalizeCandidateRows(rows));
     }
 
-    const [rows] = await pool.execute(
+    const rows = await query(
       "SELECT * FROM Candidates WHERE periodId IS NULL ORDER BY createdAt DESC"
     );
-    res.json(rows);
+    res.json(normalizeCandidateRows(rows));
   } catch (error) {
     console.error("Get candidates error:", error);
     res.status(500).json({ error: "Fetch failed" });
@@ -266,12 +361,11 @@ router.get("/candidates", adminMiddleware, async (req, res) => {
   }
 
   try {
-    const pool = await getDbPool();
-    const [rows] = await pool.execute(
-      "SELECT * FROM Candidates WHERE periodId = ? ORDER BY votes DESC, name ASC",
+    const rows = await query(
+      `SELECT * FROM Candidates WHERE periodId = ? ORDER BY votes DESC, name ASC`,
       [periodId]
     );
-    res.json(rows);
+    res.json(normalizeCandidateRows(rows));
   } catch (error) {
     console.error("Get candidates for period error:", error);
     res.status(500).json({ error: "Fetch failed" });
@@ -280,8 +374,7 @@ router.get("/candidates", adminMiddleware, async (req, res) => {
 
 router.get("/get-period", adminMiddleware, async (req, res) => {
   try {
-    const pool = await getDbPool();
-    const latestPeriod = await getLatestPeriod(pool);
+    const latestPeriod = await getLatestPeriod();
     res.json(latestPeriod);
   } catch (error) {
     console.error("Get period error:", error);
@@ -292,24 +385,23 @@ router.get("/get-period", adminMiddleware, async (req, res) => {
 router.get("/results", adminMiddleware, async (req, res) => {
   const { periodId } = req.query;
   try {
-    const pool = await getDbPool();
     let targetPeriodId = periodId;
     if (!targetPeriodId) {
-      const latestPeriod = await getLatestPeriod(pool);
+      const latestPeriod = await getLatestPeriod();
       if (!latestPeriod) {
         return res.json([]);
       }
       targetPeriodId = latestPeriod.id;
     }
 
-    const [rows] = await pool.execute(
+    const rows = await query(
       `SELECT c.id, c.name, c.lga, c.photoUrl, c.votes
        FROM Candidates c
        WHERE c.periodId = ?
        ORDER BY c.votes DESC, c.name ASC`,
       [targetPeriodId]
     );
-    res.json(rows);
+    res.json(normalizeCandidateRows(rows));
   } catch (error) {
     console.error("Get results error:", error);
     res.status(500).json({ error: "Failed to fetch results" });
@@ -318,14 +410,60 @@ router.get("/results", adminMiddleware, async (req, res) => {
 
 router.get("/periods", adminMiddleware, async (req, res) => {
   try {
-    const pool = await getDbPool();
-    const [rows] = await pool.execute(
+    const rows = await query(
       "SELECT * FROM VotingPeriod ORDER BY startTime DESC"
     );
     res.json(rows);
   } catch (error) {
     console.error("Get periods error:", error);
     res.status(500).json({ error: "Failed to fetch periods" });
+  }
+});
+
+router.delete("/period", adminMiddleware, async (req, res) => {
+  const { periodId } = req.query;
+
+  const parsedId = Number.parseInt(periodId, 10);
+  if (!periodId || Number.isNaN(parsedId)) {
+    return res.status(400).json({ error: "Valid periodId is required" });
+  }
+
+  try {
+    const period = await queryOne("SELECT * FROM VotingPeriod WHERE id = ?", [parsedId]);
+    if (!period) {
+      return res.status(404).json({ error: "Voting period not found" });
+    }
+
+    const endTime = new Date(period.endTime);
+    const hasEndedByTime = !Number.isNaN(endTime.getTime()) && endTime <= new Date();
+    const periodEnded = toBool(period.resultsPublished) || toBool(period.forcedEnded) || hasEndedByTime;
+
+    if (!periodEnded) {
+      return res.status(400).json({ error: "Cannot delete an active voting period" });
+    }
+
+    const candidatePhotos = await query(
+      `SELECT photoUrl FROM Candidates WHERE periodId = ?`,
+      [parsedId]
+    );
+
+    await withTransaction(async (tx) => {
+      await tx.execute("DELETE FROM Votes WHERE periodId = ?", [parsedId]);
+      await tx.execute("DELETE FROM Candidates WHERE periodId = ?", [parsedId]);
+      await tx.execute("DELETE FROM VotingPeriod WHERE id = ?", [parsedId]);
+    });
+
+    candidatePhotos.forEach((row) => {
+      deleteUploadedFile(row?.photoUrl);
+    });
+
+    emitUpdate(req, "periodDeleted", { periodId: parsedId });
+    emitUpdate(req, "candidatesUpdated");
+
+    res.json({ message: "Voting period deleted" });
+  } catch (error) {
+    console.error("Delete period error:", error);
+    res.status(500).json({ error: "Delete period failed" });
   }
 });
 

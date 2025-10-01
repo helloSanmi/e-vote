@@ -2,9 +2,11 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const { getDbPool } = require("./db");
 const http = require("http");
+const fs = require("fs");
+const path = require("path");
 const { Server } = require("socket.io");
+const { getDbPool } = require("./db");
 
 const app = express();
 
@@ -16,8 +18,15 @@ app.use(
   })
 );
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+const uploadsDir = path.join(__dirname, "..", "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+app.use("/uploads", express.static(uploadsDir));
 
 // Routes
 app.use("/api/auth", require("./routes/auth"));

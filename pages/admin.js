@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import io from "socket.io-client";
 
 const serverUrl = process.env.NEXT_PUBLIC_API_URL;
+const placeholderImage = "/placeholder.svg";
 
 function PopupModal({ show, message, onClose }) {
   if (!show) return null;
@@ -310,6 +311,42 @@ export default function Admin() {
     }
   };
 
+  const deletePastPeriod = async () => {
+    if (!selectedPastPeriod) {
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm("Delete this past period and its records? This cannot be undone.");
+      if (!confirmed) return;
+    }
+
+    const res = await fetch(`${serverUrl}/api/admin/period?periodId=${selectedPastPeriod}`, {
+      method: "DELETE",
+      headers,
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (res.ok) {
+      setMessage(data.message || "Past period deleted");
+      setShowPopup(true);
+      const deletedId = selectedPastPeriod;
+      setSelectedPastPeriod(null);
+      setPastCandidates([]);
+      setPastResults([]);
+      setPeriods((prev) => prev.filter((p) => p.id !== Number(deletedId)));
+      loadAllPeriods();
+      loadCurrentPeriod();
+      loadResults();
+      socket?.emit("triggerUpdate", "periodDeleted", { periodId: Number(deletedId) });
+      socket?.emit("triggerUpdate", "candidatesUpdated");
+    } else {
+      setMessage(data.error || "Error deleting period");
+      setShowPopup(true);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-8 mt-10">
       <PopupModal show={showPopup} message={message} onClose={closePopup} />
@@ -500,7 +537,7 @@ export default function Admin() {
                   {publishedCandidates.map((c) => (
                     <div key={c.id} className="border p-4 rounded flex flex-col items-center bg-white">
                       <img
-                        src={c.photoUrl || "/placeholder.png"}
+                        src={c.photoUrl || placeholderImage}
                         alt={c.name}
                         className="w-24 h-24 rounded-full mb-2 object-cover"
                       />
@@ -517,11 +554,23 @@ export default function Admin() {
 
       {activeTab === "past" && (
         <div className="bg-white p-6 rounded-lg shadow space-y-4 border border-gray-200">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-wrap justify-between items-center gap-2">
             <h2 className="text-xl font-semibold text-gray-800">Past Voting Periods</h2>
-            <button onClick={loadAllPeriods} className="bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-3 rounded">
-              Refresh Periods
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={loadAllPeriods}
+                className="bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-3 rounded"
+              >
+                Refresh Periods
+              </button>
+              <button
+                onClick={deletePastPeriod}
+                disabled={!selectedPastPeriod}
+                className={`py-1 px-3 rounded text-white transition ${selectedPastPeriod ? "bg-red-600 hover:bg-red-700" : "bg-red-300 cursor-not-allowed"}`}
+              >
+                Delete Selected Period
+              </button>
+            </div>
           </div>
           <select
             className="border p-2 rounded w-full"
@@ -545,7 +594,7 @@ export default function Admin() {
                 {pastCandidates.map((c) => (
                   <div key={c.id} className="border p-4 rounded flex flex-col items-center bg-gray-50">
                     <img
-                      src={c.photoUrl || "/placeholder.png"}
+                      src={c.photoUrl || placeholderImage}
                       alt={c.name}
                       className="w-24 h-24 rounded-full mb-2 object-cover"
                     />

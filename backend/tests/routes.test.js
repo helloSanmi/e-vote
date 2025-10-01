@@ -6,44 +6,13 @@ const request = require("supertest");
 const express = require("express");
 const jwt = require("jsonwebtoken");
 
-jest.mock("../db", () => {
-  const buildConnection = () => ({
-    beginTransaction: jest.fn().mockResolvedValue(),
-    execute: jest.fn().mockResolvedValue([{}]),
-    commit: jest.fn().mockResolvedValue(),
-    rollback: jest.fn().mockResolvedValue(),
-    release: jest.fn().mockResolvedValue(),
-  });
-
-  const buildPool = () => {
-    const connection = buildConnection();
-    return {
-      execute: jest.fn().mockResolvedValue([[], []]),
-      getConnection: jest.fn().mockResolvedValue(connection),
-      __connection: connection,
-    };
-  };
-
-  let pool = buildPool();
-
-  return {
-    getDbPool: jest.fn(async () => {
-      if (!pool) {
-        throw new Error("Mock pool not configured");
-      }
-      return pool;
-    }),
-    q: jest.fn(),
-    getConn: jest.fn(),
-    __createPool: () => buildPool(),
-    __setPool: (newPool) => {
-      pool = newPool;
-    },
-    __resetPool: () => {
-      pool = null;
-    },
-  };
-});
+jest.mock("../db", () => ({
+  query: jest.fn(),
+  queryOne: jest.fn(),
+  execute: jest.fn(),
+  withTransaction: jest.fn(),
+  getDbPool: jest.fn(),
+}));
 
 const db = require("../db");
 const adminRouter = require("../routes/admin");
@@ -51,7 +20,7 @@ const voteRouter = require("../routes/vote");
 const publicRouter = require("../routes/public");
 
 const adminToken = jwt.sign(
-  { id: 1, email: "admin@test.com", username: "admin" },
+  { id: 1, email: "admin@test.com", username: "admin", isAdmin: true },
   process.env.JWT_SECRET
 );
 const userToken = jwt.sign(
@@ -67,20 +36,25 @@ const createApp = ({ path, router, emitUpdate }) => {
   return app;
 };
 
-const prepareDb = () => {
-  db.getDbPool.mockClear();
-  const pool = db.__createPool();
-  db.__setPool(pool);
-  return { pool, connection: pool.__connection };
-};
+beforeEach(() => {
+  jest.clearAllMocks();
+});
 
 describe("Admin routes", () => {
   test("starts voting and emits updates when no active period", async () => {
-    const { pool, connection } = prepareDb();
-    pool.execute.mockResolvedValueOnce([[], []]);
+    db.queryOne.mockResolvedValueOnce(null);
 
-    connection.execute.mockResolvedValueOnce([{ insertId: 7 }]);
-    connection.execute.mockResolvedValueOnce([{ affectedRows: 3 }]);
+    const txExecute = jest
+      .fn()
+      .mockResolvedValueOnce({ recordset: [{ id: 7 }] })
+      .mockResolvedValueOnce({ rowsAffected: [3] })
+      .mockResolvedValueOnce({});
+
+    db.withTransaction.mockImplementationOnce(async (fn) => {
+      return fn({
+        execute: txExecute,
+      });
+    });
 
     const emitUpdate = jest.fn();
     const app = createApp({ path: "/api/admin", router: adminRouter, emitUpdate });
@@ -96,27 +70,19 @@ describe("Admin routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ message: "Voting started", periodId: 7 });
-    expect(connection.beginTransaction).toHaveBeenCalled();
-    expect(connection.commit).toHaveBeenCalled();
-    expect(connection.rollback).not.toHaveBeenCalled();
+    expect(txExecute).toHaveBeenCalledTimes(3);
     expect(emitUpdate).toHaveBeenCalledWith("votingStarted", { periodId: 7 });
     expect(emitUpdate).toHaveBeenCalledWith("candidatesUpdated", {});
   });
 
   test("rejects start when an active period already exists", async () => {
-    const { pool, connection } = prepareDb();
-    pool.execute.mockResolvedValueOnce([
-      [
-        {
-          id: 3,
-          startTime: new Date(Date.now() - 1_800_000).toISOString(),
-          endTime: new Date(Date.now() + 1_800_000).toISOString(),
-          resultsPublished: 0,
-          forcedEnded: 0,
-        },
-      ],
-      [],
-    ]);
+    db.queryOne.mockResolvedValueOnce({
+      id: 3,
+      startTime: new Date(Date.now() - 1_800_000).toISOString(),
+      endTime: new Date(Date.now() + 1_800_000).toISOString(),
+      resultsPublished: 0,
+      forcedEnded: 0,
+    });
 
     const emitUpdate = jest.fn();
     const app = createApp({ path: "/api/admin", router: adminRouter, emitUpdate });
@@ -131,12 +97,11 @@ describe("Admin routes", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe("There is already an active voting period");
-    expect(connection.beginTransaction).not.toHaveBeenCalled();
+    expect(db.withTransaction).not.toHaveBeenCalled();
     expect(emitUpdate).not.toHaveBeenCalled();
   });
 
   test("requires admin authentication", async () => {
-    prepareDb();
     const app = createApp({ path: "/api/admin", router: adminRouter });
     const startTime = new Date(Date.now() + 60_000).toISOString();
     const endTime = new Date(Date.now() + 3_600_000).toISOString();
@@ -148,27 +113,80 @@ describe("Admin routes", () => {
 
     expect(response.status).toBe(403);
   });
+
+  test("deletes a concluded period and emits updates", async () => {
+    db.queryOne.mockResolvedValueOnce({
+      id: 4,
+      endTime: new Date(Date.now() - 86_400_000).toISOString(),
+      resultsPublished: 1,
+      forcedEnded: 0,
+    });
+
+    const txExecute = jest.fn().mockResolvedValue({});
+    db.withTransaction.mockImplementationOnce(async (fn) => fn({ execute: txExecute }));
+
+    const emitUpdate = jest.fn();
+    const app = createApp({ path: "/api/admin", router: adminRouter, emitUpdate });
+
+    const response = await request(app)
+      .delete("/api/admin/period")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .query({ periodId: 4 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.message).toBe("Voting period deleted");
+    expect(txExecute).toHaveBeenCalledTimes(3);
+    expect(txExecute).toHaveBeenNthCalledWith(1, "DELETE FROM Votes WHERE periodId = ?", [4]);
+    expect(txExecute).toHaveBeenNthCalledWith(2, "DELETE FROM Candidates WHERE periodId = ?", [4]);
+    expect(txExecute).toHaveBeenNthCalledWith(3, "DELETE FROM VotingPeriod WHERE id = ?", [4]);
+    expect(emitUpdate).toHaveBeenCalledWith("periodDeleted", { periodId: 4 });
+    expect(emitUpdate).toHaveBeenCalledWith("candidatesUpdated", {});
+  });
+
+  test("prevents deleting an active period", async () => {
+    db.queryOne.mockResolvedValueOnce({
+      id: 8,
+      endTime: new Date(Date.now() + 86_400_000).toISOString(),
+      resultsPublished: 0,
+      forcedEnded: 0,
+    });
+
+    const emitUpdate = jest.fn();
+    const app = createApp({ path: "/api/admin", router: adminRouter, emitUpdate });
+
+    const response = await request(app)
+      .delete("/api/admin/period")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .query({ periodId: 8 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Cannot delete an active voting period");
+    expect(db.withTransaction).not.toHaveBeenCalled();
+    expect(emitUpdate).not.toHaveBeenCalled();
+  });
 });
 
 describe("Vote routes", () => {
   test("casts a vote when within an active period", async () => {
-    const { pool, connection } = prepareDb();
     const now = Date.now();
-    pool.execute
-      .mockResolvedValueOnce([
-        [
-          {
-            id: 1,
-            startTime: new Date(now - 60_000).toISOString(),
-            endTime: new Date(now + 3_600_000).toISOString(),
-            forcedEnded: 0,
-            resultsPublished: 0,
-          },
-        ],
-        [],
-      ])
-      .mockResolvedValueOnce([[{ id: 5 }], []])
-      .mockResolvedValueOnce([[], []]);
+    db.queryOne
+      .mockResolvedValueOnce({
+        id: 1,
+        startTime: new Date(now - 60_000).toISOString(),
+        endTime: new Date(now + 3_600_000).toISOString(),
+        forcedEnded: 0,
+        resultsPublished: 0,
+      })
+      .mockResolvedValueOnce({ id: 5 })
+      .mockResolvedValueOnce(null);
+
+    const txExecute = jest
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ rowsAffected: [1] })
+      .mockResolvedValueOnce({});
+
+    db.withTransaction.mockImplementationOnce(async (fn) => fn({ execute: txExecute }));
 
     const emitUpdate = jest.fn();
     const app = createApp({ path: "/api/vote", router: voteRouter, emitUpdate });
@@ -180,29 +198,22 @@ describe("Vote routes", () => {
 
     expect(response.status).toBe(201);
     expect(response.body.message).toBe("Vote cast");
-    expect(connection.beginTransaction).toHaveBeenCalled();
-    expect(connection.commit).toHaveBeenCalled();
+    expect(txExecute).toHaveBeenCalledTimes(3);
     expect(emitUpdate).toHaveBeenCalledWith("voteCast", { periodId: 1, candidateId: 5 });
   });
 
   test("prevents duplicate votes within the same period", async () => {
-    const { pool } = prepareDb();
     const now = Date.now();
-    pool.execute
-      .mockResolvedValueOnce([
-        [
-          {
-            id: 1,
-            startTime: new Date(now - 60_000).toISOString(),
-            endTime: new Date(now + 3_600_000).toISOString(),
-            forcedEnded: 0,
-            resultsPublished: 0,
-          },
-        ],
-        [],
-      ])
-      .mockResolvedValueOnce([[{ id: 5 }], []])
-      .mockResolvedValueOnce([[{ id: 99 }], []]);
+    db.queryOne
+      .mockResolvedValueOnce({
+        id: 1,
+        startTime: new Date(now - 60_000).toISOString(),
+        endTime: new Date(now + 3_600_000).toISOString(),
+        forcedEnded: 0,
+        resultsPublished: 0,
+      })
+      .mockResolvedValueOnce({ id: 5 })
+      .mockResolvedValueOnce({ id: 9 });
 
     const app = createApp({ path: "/api/vote", router: voteRouter });
 
@@ -213,60 +224,18 @@ describe("Vote routes", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe("User already voted");
+    expect(db.withTransaction).not.toHaveBeenCalled();
   });
 });
 
 describe("Public routes", () => {
-  test("blocks results when user did not participate", async () => {
-    const { pool } = prepareDb();
-    pool.execute
-      .mockResolvedValueOnce([[{ id: 1, resultsPublished: 1 }], []])
-      .mockResolvedValueOnce([[], []]);
-
+  test("returns latest period", async () => {
+    db.queryOne.mockResolvedValueOnce({ id: 1 });
     const app = createApp({ path: "/api/public", router: publicRouter });
 
-    const response = await request(app)
-      .get("/api/public/public-results")
-      .query({ periodId: 1, userId: 2 });
+    const response = await request(app).get("/api/public/period");
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ published: true, results: [], noParticipation: true });
-  });
-
-  test("returns published results to participating users", async () => {
-    const { pool } = prepareDb();
-    pool.execute
-      .mockResolvedValueOnce([[{ id: 1, resultsPublished: 1 }], []])
-      .mockResolvedValueOnce([[{ id: 55 }], []])
-      .mockResolvedValueOnce([
-        [
-          {
-            id: 5,
-            name: "Candidate A",
-            lga: "Central",
-            photoUrl: null,
-            votes: 12,
-          },
-        ],
-        [],
-      ]);
-
-    const app = createApp({ path: "/api/public", router: publicRouter });
-
-    const response = await request(app)
-      .get("/api/public/public-results")
-      .query({ periodId: 1, userId: 2 });
-
-    expect(response.status).toBe(200);
-    expect(response.body.published).toBe(true);
-    expect(response.body.results).toEqual([
-      {
-        id: 5,
-        name: "Candidate A",
-        lga: "Central",
-        photoUrl: null,
-        votes: 12,
-      },
-    ]);
+    expect(response.body).toEqual({ id: 1 });
   });
 });

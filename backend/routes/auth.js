@@ -2,7 +2,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { getDbPool } = require("../db");
+const { query, queryOne, execute } = require("../db");
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -39,9 +39,10 @@ router.post("/register", async (req, res) => {
   }
 
   try {
-    const pool = await getDbPool();
-    const [existing] = await pool.execute(
-      `SELECT id, username, email FROM Users WHERE username = ? OR email = ?`,
+    const existing = await query(
+      `SELECT id, username, email
+       FROM Users
+       WHERE username = ? OR email = ?`,
       [username, email]
     );
 
@@ -53,9 +54,9 @@ router.post("/register", async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await pool.execute(
-      `INSERT INTO Users (fullName, username, email, password, hasVoted)
-       VALUES (?, ?, ?, ?, 0)`,
+    await execute(
+      `INSERT INTO Users (fullName, username, email, password)
+       VALUES (?, ?, ?, ?)`,
       [fullName, username, email, hashedPassword]
     );
 
@@ -79,17 +80,14 @@ router.post("/login", async (req, res) => {
   }
 
   try {
-    const pool = await getDbPool();
-    const [rows] = await pool.execute(
-      `SELECT * FROM Users WHERE email = ? OR username = ?`,
+    const user = await queryOne(
+      `SELECT TOP (1) * FROM Users WHERE email = ? OR username = ?`,
       [email, email]
     );
 
-    if (rows.length === 0) {
+    if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-
-    const user = rows[0];
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
 
@@ -123,17 +121,14 @@ router.get("/me", async (req, res) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const pool = await getDbPool();
-
-    const [rows] = await pool.execute(
+    const user = await queryOne(
       `SELECT id, fullName, username, email, hasVoted FROM Users WHERE id = ?`,
       [decoded.id]
     );
 
-    if (rows.length === 0) {
+    if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-    const user = rows[0];
     res.json({ ...user, isAdmin: isAdminUser(user) });
   } catch (error) {
     console.error("Me error:", error);

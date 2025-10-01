@@ -1,98 +1,185 @@
 // backend/db.js
-const mysql = require("mysql2/promise");
+const sql = require("mssql");
 require("dotenv").config();
 
-let pool;
+let poolPromise;
 
-async function getDbPool() {
-  if (pool) return pool;
 
-  pool = await mysql.createPool({
-    host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT || 3306),
+function createConfig() {
+  return {
+    server: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT || 1433),
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME || "evotedb",
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    timezone: "Z",
-    dateStrings: true,
+    database: process.env.DB_NAME,
+    options: {
+      encrypt: true,
+      trustServerCertificate: false,
+      enableArithAbort: true,
+    },
+    pool: {
+      max: 10,
+      min: 0,
+      idleTimeoutMillis: 30_000,
+    },
+  };
+}
+
+async function ensureSchema(pool) {
+  const request = pool.request();
+  await request.batch(`
+    IF OBJECT_ID('dbo.Users', 'U') IS NULL
+    BEGIN
+      CREATE TABLE dbo.Users (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        fullName NVARCHAR(255) NOT NULL,
+        username NVARCHAR(255) NOT NULL UNIQUE,
+        email NVARCHAR(255) NOT NULL UNIQUE,
+        password NVARCHAR(255) NOT NULL,
+        hasVoted BIT NOT NULL DEFAULT (0),
+        createdAt DATETIME2 NOT NULL DEFAULT (SYSUTCDATETIME())
+      );
+    END;
+
+    IF OBJECT_ID('dbo.VotingPeriod', 'U') IS NULL
+    BEGIN
+      CREATE TABLE dbo.VotingPeriod (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        startTime DATETIME2 NOT NULL,
+        endTime DATETIME2 NOT NULL,
+        resultsPublished BIT NOT NULL DEFAULT (0),
+        forcedEnded BIT NOT NULL DEFAULT (0)
+      );
+      CREATE INDEX IX_VotingPeriod_StartEnd ON dbo.VotingPeriod (startTime, endTime);
+    END;
+
+    IF OBJECT_ID('dbo.Candidates', 'U') IS NULL
+    BEGIN
+      CREATE TABLE dbo.Candidates (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        name NVARCHAR(255) NOT NULL,
+        lga NVARCHAR(255) NULL,
+        photoUrl NVARCHAR(512) NULL,
+        periodId INT NULL,
+        published BIT NOT NULL DEFAULT (0),
+        votes INT NOT NULL DEFAULT (0),
+        createdAt DATETIME2 NOT NULL DEFAULT (SYSUTCDATETIME()),
+        CONSTRAINT FK_Candidates_VotingPeriod FOREIGN KEY (periodId) REFERENCES dbo.VotingPeriod(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IX_Candidates_PeriodId ON dbo.Candidates (periodId);
+      CREATE INDEX IX_Candidates_Published ON dbo.Candidates (published);
+    END;
+
+    IF OBJECT_ID('dbo.Votes', 'U') IS NULL
+    BEGIN
+      CREATE TABLE dbo.Votes (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        userId INT NOT NULL,
+        candidateId INT NOT NULL,
+        periodId INT NOT NULL,
+        createdAt DATETIME2 NOT NULL DEFAULT (SYSUTCDATETIME()),
+        CONSTRAINT FK_Votes_User FOREIGN KEY (userId) REFERENCES dbo.Users(id) ON DELETE CASCADE,
+        CONSTRAINT FK_Votes_Candidate FOREIGN KEY (candidateId) REFERENCES dbo.Candidates(id) ON DELETE CASCADE,
+        CONSTRAINT FK_Votes_Period FOREIGN KEY (periodId) REFERENCES dbo.VotingPeriod(id) ON DELETE CASCADE,
+        CONSTRAINT UQ_Votes_UserPeriod UNIQUE (userId, periodId)
+      );
+      CREATE INDEX IX_Votes_PeriodCandidate ON dbo.Votes (periodId, candidateId);
+      CREATE INDEX IX_Votes_UserId ON dbo.Votes (userId);
+    END;
+  `);
+}
+
+async function createPool() {
+  const config = createConfig();
+  const pool = await new sql.ConnectionPool(config).connect();
+
+  pool.on("error", (err) => {
+    console.error("MSSQL pool error", err);
   });
 
-  // Create tables if they don't exist
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS Users (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      fullName VARCHAR(255) NOT NULL,
-      username VARCHAR(255) NOT NULL UNIQUE,
-      email VARCHAR(255) NOT NULL UNIQUE,
-      password VARCHAR(255) NOT NULL,
-      hasVoted BOOLEAN DEFAULT FALSE,
-      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      CHECK (hasVoted IN (0, 1)),
-      INDEX idx_username (username),
-      INDEX idx_email (email)
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS VotingPeriod (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      startTime DATETIME NOT NULL,
-      endTime DATETIME NOT NULL,
-      resultsPublished BOOLEAN DEFAULT FALSE,
-      forcedEnded BOOLEAN DEFAULT FALSE,
-      CHECK (resultsPublished IN (0, 1)),
-      CHECK (forcedEnded IN (0, 1)),
-      INDEX idx_start_end (startTime, endTime)
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS Candidates (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      lga VARCHAR(255),
-      photoUrl VARCHAR(255),
-      periodId INT NULL,
-      published BOOLEAN DEFAULT FALSE,
-      votes INT DEFAULT 0,
-      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      CHECK (published IN (0, 1)),
-      FOREIGN KEY (periodId) REFERENCES VotingPeriod(id) ON DELETE SET NULL,
-      INDEX idx_periodId (periodId),
-      INDEX idx_published (published)
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS Votes (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      userId INT NOT NULL,
-      candidateId INT NOT NULL,
-      periodId INT NOT NULL,
-      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE (userId, periodId),
-      FOREIGN KEY (userId) REFERENCES Users(id) ON DELETE CASCADE,
-      FOREIGN KEY (candidateId) REFERENCES Candidates(id) ON DELETE CASCADE,
-      FOREIGN KEY (periodId) REFERENCES VotingPeriod(id) ON DELETE CASCADE,
-      INDEX idx_period_candidate (periodId, candidateId),
-      INDEX idx_userId (userId)
-    );
-  `);
-
+  await ensureSchema(pool);
   return pool;
 }
 
-async function q(sql, params = []) {
-  const pool = await getDbPool();
-  return pool.query(sql, params);
+async function getDbPool() {
+  if (!poolPromise) {
+    poolPromise = createPool().catch((err) => {
+      poolPromise = null;
+      throw err;
+    });
+  }
+  return poolPromise;
 }
 
-async function getConn() {
-  const pool = await getDbPool();
-  return pool.getConnection();
+function bindParameters(request, sqlText, params = []) {
+  let index = 0;
+  const transformed = sqlText.replace(/\?/g, () => {
+    if (index >= params.length) {
+      throw new Error("Insufficient parameters supplied for query");
+    }
+    const paramName = `p${index}`;
+    request.input(paramName, params[index]);
+    index += 1;
+    return `@${paramName}`;
+  });
+
+  if (index < params.length) {
+    throw new Error("Too many parameters supplied for query");
+  }
+
+  return transformed;
 }
 
-module.exports = { getDbPool, q, getConn };
+async function execute(sqlText, params = []) {
+  const pool = await getDbPool();
+  const request = pool.request();
+  const statement = bindParameters(request, sqlText, params);
+  return request.query(statement);
+}
+
+async function query(sqlText, params = []) {
+  const result = await execute(sqlText, params);
+  return result.recordset || [];
+}
+
+async function queryOne(sqlText, params = []) {
+  const rows = await query(sqlText, params);
+  return rows.length ? rows[0] : null;
+}
+
+async function withTransaction(callback) {
+  const pool = await getDbPool();
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+
+  const txRunner = {
+    async execute(sqlText, params = []) {
+      const request = new sql.Request(transaction);
+      const statement = bindParameters(request, sqlText, params);
+      return request.query(statement);
+    },
+    async query(sqlText, params = []) {
+      const result = await this.execute(sqlText, params);
+      return result.recordset || [];
+    },
+    async queryOne(sqlText, params = []) {
+      const rows = await this.query(sqlText, params);
+      return rows.length ? rows[0] : null;
+    },
+  };
+
+  try {
+    const result = await callback(txRunner);
+    await transaction.commit();
+    return result;
+  } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch (rollbackError) {
+      console.error("Transaction rollback failed", rollbackError);
+    }
+    throw error;
+  }
+}
+
+module.exports = { getDbPool, execute, query, queryOne, withTransaction };

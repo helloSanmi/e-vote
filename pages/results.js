@@ -20,6 +20,7 @@ function PopupModal({ show, message, onClose }) {
 }
 
 const serverUrl = process.env.NEXT_PUBLIC_API_URL;
+const placeholderImage = "/placeholder.svg";
 
 export default function Results() {
   const [socket, setSocket] = useState(null);
@@ -153,7 +154,7 @@ export default function Results() {
                 className="border rounded-lg p-4 bg-gray-50 flex flex-col items-center text-center"
               >
                 <img
-                  src={result.photoUrl || "/placeholder.png"}
+                  src={result.photoUrl || placeholderImage}
                   alt={result.name}
                   className="w-24 h-24 rounded-full mb-4 object-cover"
                 />
