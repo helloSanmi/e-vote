@@ -84,6 +84,10 @@ export default function Layout({ children }) {
     localStorage.removeItem("token");
     localStorage.removeItem("userId");
     localStorage.removeItem("isAdmin");
+    setLoggedIn(false);
+    setIsAdmin(false);
+    setUserName("");
+    setCheckComplete(true);
     router.push("/");
   };
 
@@ -100,6 +104,7 @@ export default function Layout({ children }) {
     "rounded-full bg-white px-4 py-1.5 text-sm font-medium text-slate-600 shadow-sm hover:text-blue-600 hover:shadow-md transition";
   const primaryButton =
     "rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow hover:bg-blue-500";
+  const isActive = (path) => router.pathname === path;
   const logoutButton =
     "rounded-full border border-red-200 px-4 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 transition";
 
@@ -125,7 +130,7 @@ export default function Layout({ children }) {
                   />
                   <div>
                     <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-600">E-Vote</p>
-                    <p className="text-lg font-bold text-slate-900">Tech Analytics Election Hub</p>
+                    <p className="text-lg font-bold text-slate-900">Secure Voting Platform</p>
                   </div>
                 </div>
               </Link>
@@ -140,23 +145,23 @@ export default function Layout({ children }) {
               {!loggedIn && (
                 <>
                   <Link href="/register">
-                    <span className={navButton}>Register</span>
+                    <span className={isActive("/register") ? primaryButton : navButton}>Register</span>
                   </Link>
                   <Link href="/login">
-                    <span className={primaryButton}>Login</span>
+                    <span className={isActive("/login") ? primaryButton : navButton}>Login</span>
                   </Link>
                 </>
               )}
               {loggedIn && !isAdmin && (
                 <>
                   <Link href="/vote">
-                    <span className={navButton}>Vote</span>
+                    <span className={isActive("/vote") ? primaryButton : navButton}>Vote</span>
                   </Link>
                   <Link href="/results">
-                    <span className={navButton}>Results</span>
+                    <span className={isActive("/results") ? primaryButton : navButton}>Results</span>
                   </Link>
                   <Link href="/past-results">
-                    <span className={navButton}>Past Results</span>
+                    <span className={isActive("/past-results") ? primaryButton : navButton}>Past Results</span>
                   </Link>
                 </>
               )}
@@ -182,7 +187,7 @@ export default function Layout({ children }) {
 
         <footer className="mx-auto w-full max-w-6xl px-4 pb-10">
           <div className="glass-panel rounded-2xl px-6 py-4 text-center text-sm text-slate-600">
-            &copy; {new Date().getFullYear()} Tech Analytics Voting Hub. Crafted for transparent elections.
+            &copy; {new Date().getFullYear()} EVote
           </div>
         </footer>
       </div>

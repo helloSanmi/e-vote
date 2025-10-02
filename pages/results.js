@@ -1,6 +1,8 @@
 // frontend/pages/results.js
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import io from "socket.io-client";
+import { resolveImageUrl } from "../utils/resolveImageUrl";
 
 function PopupModal({ show, message, onClose }) {
   if (!show) return null;
@@ -21,8 +23,22 @@ function PopupModal({ show, message, onClose }) {
 
 const serverUrl = process.env.NEXT_PUBLIC_API_URL;
 const placeholderImage = "/placeholder.svg";
+const buildPhotoSrc = (...values) => {
+  for (const raw of values) {
+    const resolved = resolveImageUrl(raw, serverUrl);
+    if (resolved) {
+      return resolved;
+    }
+  }
+  return placeholderImage;
+};
+const handleImgError = (event) => {
+  event.currentTarget.onerror = null;
+  event.currentTarget.src = placeholderImage;
+};
 
 export default function Results() {
+  const router = useRouter();
   const [socket, setSocket] = useState(null);
   const [results, setResults] = useState([]);
   const [canView, setCanView] = useState(false);
@@ -32,16 +48,27 @@ export default function Results() {
 
   const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
   const [periodId, setPeriodId] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
-    // We connect to the socket server
+    if (typeof window === "undefined") return;
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    setAuthReady(true);
+  }, [router]);
+
+  useEffect(() => {
+    if (!authReady) return;
     const newSocket = io(serverUrl);
     setSocket(newSocket);
     return () => newSocket.close();
-  }, []);
+  }, [authReady]);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!authReady || !socket) return;
     // When results are published, refresh
     socket.on("resultsPublished", () => {
       setMessage("Results have just been published!");
@@ -121,8 +148,13 @@ export default function Results() {
   };
 
   useEffect(() => {
+    if (!authReady) return;
     fetchCurrentPeriod();
-  }, []);
+  }, [authReady]);
+
+  if (!authReady) {
+    return null;
+  }
 
   if (!canView) {
     return (
@@ -161,7 +193,8 @@ export default function Results() {
               className="glass-card flex h-full flex-col items-center gap-4 px-6 py-8 text-center"
             >
               <img
-                src={result.photoUrl || placeholderImage}
+                src={buildPhotoSrc(result.photoSrc, result.photoUrl)}
+                onError={handleImgError}
                 alt={result.name}
                 className="h-24 w-24 rounded-full border border-slate-200 object-cover shadow-sm"
               />

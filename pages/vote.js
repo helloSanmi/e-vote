@@ -1,11 +1,27 @@
 // frontend/pages/vote.js
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import io from "socket.io-client";
+import { resolveImageUrl } from "../utils/resolveImageUrl";
 
 const serverUrl = process.env.NEXT_PUBLIC_API_URL;
 const placeholderImage = "/placeholder.svg";
+const buildPhotoSrc = (...values) => {
+  for (const raw of values) {
+    const resolved = resolveImageUrl(raw, serverUrl);
+    if (resolved) {
+      return resolved;
+    }
+  }
+  return placeholderImage;
+};
+const handleImgError = (event) => {
+  event.currentTarget.onerror = null;
+  event.currentTarget.src = placeholderImage;
+};
 
 export default function Vote() {
+  const router = useRouter();
   const [socket, setSocket] = useState(null);
   const [period, setPeriod] = useState(null);
   const [candidates, setCandidates] = useState([]);
@@ -15,20 +31,34 @@ export default function Vote() {
   const [votingEnded, setVotingEnded] = useState(false);
   const [resultsPublished, setResultsPublished] = useState(false);
   const [showVoteModal, setShowVoteModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isSubmittingVote, setIsSubmittingVote] = useState(false);
   const [alreadyVotedCandidate, setAlreadyVotedCandidate] = useState(null);
   const [message, setMessage] = useState("");
   const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    setAuthReady(true);
+  }, [router]);
+
+  useEffect(() => {
+    if (!authReady) return;
     const newSocket = io(serverUrl);
     setSocket(newSocket);
     return () => newSocket.close();
-  }, []);
+  }, [authReady]);
 
   // Listen for admin starting voting
   useEffect(() => {
-    if (!socket) return;
+    if (!authReady || !socket) return;
     socket.on("votingStarted", () => {
       fetchPeriod();
       fetchCandidates();
@@ -103,10 +133,14 @@ export default function Vote() {
     setTimeout(() => calculateTimeLeft(target), 1000);
   };
 
-  const handleVote = async () => {
+  const submitVote = async () => {
+    if (isSubmittingVote) return;
+    setIsSubmittingVote(true);
+    setShowConfirmModal(false);
     if (!selectedCandidate || votingNotStarted || votingEnded) return;
     if (!token || !userId) {
       setMessage("Please login first.");
+      setIsSubmittingVote(false);
       return;
     }
     if (alreadyVotedCandidate) return;
@@ -127,24 +161,30 @@ export default function Vote() {
       const data = await res.json().catch(() => ({}));
       setMessage(data.error || "Unable to submit vote. Please try again.");
     }
+    setIsSubmittingVote(false);
   };
 
   useEffect(() => {
+    if (!authReady) return;
     fetchPeriod();
     // We'll fetch candidates after we know the period
-  }, []);
+  }, [authReady]);
 
   useEffect(() => {
-    if (period) {
+    if (authReady && period) {
       fetchCandidates();
     }
-  }, [period]);
+  }, [period, authReady]);
 
   useEffect(() => {
-    if (candidates.length > 0 && period) {
+    if (authReady && candidates.length > 0 && period) {
       checkUserVote();
     }
-  }, [candidates, period]);
+  }, [candidates, period, authReady]);
+
+  if (!authReady) {
+    return null;
+  }
 
   if (!period) {
     return (
@@ -216,7 +256,8 @@ export default function Vote() {
                   } ${isDisabled ? "opacity-60" : ""}`}
                 >
                   <img
-                    src={candidate.photoUrl || placeholderImage}
+                    src={buildPhotoSrc(candidate.photoSrc, candidate.photoUrl)}
+                    onError={handleImgError}
                     alt={candidate.name}
                     className="h-24 w-24 rounded-full border border-slate-200 object-cover shadow-sm"
                   />
@@ -232,7 +273,7 @@ export default function Vote() {
           {!alreadyVotedCandidate && selectedCandidate && candidates.length > 0 && (
             <div className="mx-auto flex w-full max-w-3xl justify-center">
               <button
-                onClick={handleVote}
+                onClick={() => setShowConfirmModal(true)}
                 className="flex w-full items-center justify-center gap-3 rounded-full bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 sm:w-auto"
               >
                 Submit Vote
@@ -284,6 +325,34 @@ export default function Vote() {
             >
               OK
             </button>
+          </div>
+        </div>
+      )}
+
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur">
+          <div className="glass-card w-full max-w-sm px-6 py-8 text-center space-y-4">
+            <h2 className="text-xl font-semibold text-slate-900">Confirm Your Vote</h2>
+            <p className="text-sm text-slate-600">
+              Are you sure you want to submit your vote for {
+                candidates.find((c) => c.id === selectedCandidate)?.name || "this candidate"
+              }?
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="w-full rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-blue-400 hover:text-blue-600 sm:w-32"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitVote}
+                disabled={isSubmittingVote}
+                className="w-full rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-400 sm:w-32"
+              >
+                {isSubmittingVote ? "Submitting..." : "Yes, Submit"}
+              </button>
+            </div>
           </div>
         </div>
       )}

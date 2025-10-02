@@ -1,10 +1,25 @@
 // frontend/pages/admin.js
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/router";
 import io from "socket.io-client";
 import nigeriaLGAs from "../data/nigeria-lgas.json";
+import { resolveImageUrl } from "../utils/resolveImageUrl";
 
 const serverUrl = process.env.NEXT_PUBLIC_API_URL;
 const placeholderImage = "/placeholder.svg";
+const buildPhotoSrc = (...values) => {
+  for (const raw of values) {
+    const resolved = resolveImageUrl(raw, serverUrl);
+    if (resolved) {
+      return resolved;
+    }
+  }
+  return placeholderImage;
+};
+const handleImgError = (event) => {
+  event.currentTarget.onerror = null;
+  event.currentTarget.src = placeholderImage;
+};
 
 function PopupModal({ show, message, onClose }) {
   if (!show) return null;
@@ -24,6 +39,7 @@ function PopupModal({ show, message, onClose }) {
 }
 
 export default function Admin() {
+  const router = useRouter();
   const [socket, setSocket] = useState(null);
 
   const [message, setMessage] = useState("");
@@ -50,6 +66,8 @@ export default function Admin() {
   const [pastCandidates, setPastCandidates] = useState([]);
   const [pastResults, setPastResults] = useState([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState(null);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers = {
@@ -59,16 +77,28 @@ export default function Admin() {
 
   const asBool = (value) => value === true || value === 1 || value === "1";
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const token = localStorage.getItem("token");
+    const isAdminFlag = localStorage.getItem("isAdmin");
+    if (!token || isAdminFlag !== "true") {
+      router.replace("/login");
+      return;
+    }
+    setAuthReady(true);
+  }, [router]);
+
   // Initialize Socket.io
   useEffect(() => {
+    if (!authReady) return;
     const newSocket = io(serverUrl);
     setSocket(newSocket);
     return () => newSocket.close();
-  }, []);
+  }, [authReady]);
 
   // Socket event listeners
   useEffect(() => {
-    if (!socket) return;
+    if (!authReady || !socket) return;
     socket.on("candidatesUpdated", loadCandidates);
     socket.on("votingStarted", (data) => {
       setMessage(`Voting has started${data && data.periodId ? ` (Period ${data.periodId})` : ""}`);
@@ -82,7 +112,16 @@ export default function Admin() {
       setMessage("Results have been published");
       setShowPopup(true);
       loadCurrentPeriod();
+      loadCandidates();
       loadResults();
+      loadAllPeriods().then((updatedPeriods) => {
+        const latest = updatedPeriods?.[0];
+        if (latest?.resultsPublished) {
+          setActiveTab("past");
+          setSelectedPastPeriod(String(latest.id));
+          loadPastPeriodData(latest.id);
+        }
+      });
     });
 
     return () => {
@@ -155,12 +194,18 @@ export default function Admin() {
       const res = await fetch(`${serverUrl}/api/admin/periods`, { headers });
       if (!res.ok) {
         setPeriods([]);
-        return;
+        return [];
       }
       const data = await res.json();
-      if (Array.isArray(data)) setPeriods(data);
+      if (Array.isArray(data)) {
+        setPeriods(data);
+        return data;
+      }
+      setPeriods([]);
+      return [];
     } catch {
       setPeriods([]);
+      return [];
     }
   };
 
@@ -195,15 +240,17 @@ export default function Admin() {
   };
 
   useEffect(() => {
+    if (!authReady) return;
     loadCurrentPeriod();
     loadCandidates();
     loadResults();
     loadAllPeriods();
-  }, []);
+  }, [authReady]);
 
   useEffect(() => {
+    if (!authReady) return;
     if (selectedPastPeriod) loadPastPeriodData(selectedPastPeriod);
-  }, [selectedPastPeriod]);
+  }, [selectedPastPeriod, authReady]);
 
   const handlePhotoChange = (event) => {
     const file = event.target.files?.[0];
@@ -343,36 +390,46 @@ export default function Admin() {
       return;
     }
 
-    if (typeof window !== "undefined") {
-      const confirmed = window.confirm("Delete this past period and its records? This cannot be undone.");
-      if (!confirmed) return;
-    }
+    if (confirmConfig) return;
 
-    const res = await fetch(`${serverUrl}/api/admin/period?periodId=${selectedPastPeriod}`, {
-      method: "DELETE",
-      headers,
+    setConfirmConfig({
+      title: "Delete Past Period",
+      description:
+        "This will remove the period, its candidates, votes, and uploaded photos. This cannot be undone.",
+      confirmLabel: "Delete",
+      confirmTone: "danger",
+      onConfirm: async () => {
+        const res = await fetch(`${serverUrl}/api/admin/period?periodId=${selectedPastPeriod}`, {
+          method: "DELETE",
+          headers,
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (res.ok) {
+          setMessage(data.message || "Past period deleted");
+          setShowPopup(true);
+          const deletedId = selectedPastPeriod;
+          setSelectedPastPeriod(null);
+          setPastCandidates([]);
+          setPastResults([]);
+          setPeriods((prev) => prev.filter((p) => p.id !== Number(deletedId)));
+          loadAllPeriods();
+          loadCurrentPeriod();
+          loadResults();
+          socket?.emit("triggerUpdate", "periodDeleted", { periodId: Number(deletedId) });
+          socket?.emit("triggerUpdate", "candidatesUpdated");
+        } else {
+          setMessage(data.error || "Error deleting period");
+          setShowPopup(true);
+        }
+      },
     });
-
-    const data = await res.json().catch(() => ({}));
-
-    if (res.ok) {
-      setMessage(data.message || "Past period deleted");
-      setShowPopup(true);
-      const deletedId = selectedPastPeriod;
-      setSelectedPastPeriod(null);
-      setPastCandidates([]);
-      setPastResults([]);
-      setPeriods((prev) => prev.filter((p) => p.id !== Number(deletedId)));
-      loadAllPeriods();
-      loadCurrentPeriod();
-      loadResults();
-      socket?.emit("triggerUpdate", "periodDeleted", { periodId: Number(deletedId) });
-      socket?.emit("triggerUpdate", "candidatesUpdated");
-    } else {
-      setMessage(data.error || "Error deleting period");
-      setShowPopup(true);
-    }
   };
+
+  if (!authReady) {
+    return null;
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-10 py-2">
@@ -457,7 +514,8 @@ export default function Admin() {
               {photoPreview && (
                 <div className="mt-3 flex items-center gap-3">
                   <img
-                    src={photoPreview}
+                    src={buildPhotoSrc(photoPreview)}
+                    onError={handleImgError}
                     alt="Candidate preview"
                     className="h-16 w-16 rounded-full border border-slate-200 object-cover shadow-sm"
                   />
@@ -623,7 +681,8 @@ export default function Admin() {
                   {publishedCandidates.map((c) => (
                     <div key={c.id} className="glass-card flex flex-col items-center gap-3 px-4 py-5 text-center">
                       <img
-                        src={c.photoUrl || placeholderImage}
+                        src={buildPhotoSrc(c.photoSrc, c.photoUrl)}
+                        onError={handleImgError}
                         alt={c.name}
                         className="h-20 w-20 rounded-full border border-slate-200 object-cover shadow-sm"
                       />
@@ -690,7 +749,8 @@ export default function Admin() {
                 {pastCandidates.map((c) => (
                   <div key={c.id} className="glass-card flex flex-col items-center gap-3 px-4 py-5 text-center">
                     <img
-                      src={c.photoUrl || placeholderImage}
+                      src={buildPhotoSrc(c.photoSrc, c.photoUrl)}
+                      onError={handleImgError}
                       alt={c.name}
                       className="h-20 w-20 rounded-full border border-slate-200 object-cover shadow-sm"
                     />
@@ -725,6 +785,37 @@ export default function Admin() {
               </div>
             </div>
           )}
+        </div>
+      )}
+    </div>
+      {confirmConfig && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur">
+          <div className="glass-card w-full max-w-sm px-6 py-8 text-center space-y-4">
+            <h2 className="text-xl font-semibold text-slate-900">{confirmConfig.title}</h2>
+            <p className="text-sm text-slate-600">{confirmConfig.description}</p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <button
+                onClick={() => setConfirmConfig(null)}
+                className="w-full rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-blue-400 hover:text-blue-600 sm:w-32"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const onConfirm = confirmConfig.onConfirm;
+                  setConfirmConfig(null);
+                  if (typeof onConfirm === "function") {
+                    await onConfirm();
+                  }
+                }}
+                className={`w-full rounded-full px-4 py-2 text-sm font-semibold text-white shadow-sm transition sm:w-32 ${
+                  confirmConfig.confirmTone === "danger" ? "bg-red-500 hover:bg-red-400" : "bg-blue-600 hover:bg-blue-500"
+                }`}
+              >
+                {confirmConfig.confirmLabel || "Confirm"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

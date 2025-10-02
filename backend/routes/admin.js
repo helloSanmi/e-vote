@@ -24,15 +24,34 @@ const ensureUploadsDir = () => {
 
 ensureUploadsDir();
 
-const normalizePhotoUrlValue = (value) => {
+const normalizePhotoPath = (value) => {
   if (value === null || value === undefined) return null;
   const stringValue = typeof value === "string" ? value : String(value);
   const trimmed = stringValue.trim();
   if (!trimmed) return null;
-  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith("/")) {
-    return trimmed;
-  }
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("/")) return trimmed;
   return `/${trimmed}`;
+};
+
+const buildAbsolutePhotoUrl = (value, baseUrl) => {
+  const normalized = normalizePhotoPath(value);
+  if (!normalized) return null;
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  if (!baseUrl) return normalized;
+  const sanitizedBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  return `${sanitizedBase}${normalized}`;
+};
+
+const getPublicBaseUrl = (req) => {
+  const configured = process.env.PUBLIC_BASE_URL;
+  if (configured && configured.trim()) {
+    const trimmed = configured.trim();
+    return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+  }
+  const protocol = req.protocol || "http";
+  const host = req.get("host");
+  return host ? `${protocol}://${host}` : "";
 };
 
 const saveBase64Image = (base64String) => {
@@ -80,12 +99,13 @@ const deleteUploadedFile = (photoUrl) => {
   fs.promises.unlink(filePath).catch(() => {});
 };
 
-const withNormalizedPhoto = (candidate) => {
+const withNormalizedPhoto = (candidate, baseUrl) => {
   if (!candidate) return candidate;
-  return { ...candidate, photoUrl: normalizePhotoUrlValue(candidate.photoUrl) };
+  const normalizedPhoto = buildAbsolutePhotoUrl(candidate.photoUrl, baseUrl);
+  return { ...candidate, photoUrl: normalizedPhoto, photoSrc: normalizedPhoto };
 };
 
-const normalizeCandidateRows = (rows = []) => rows.map(withNormalizedPhoto);
+const normalizeCandidateRows = (rows = [], baseUrl) => rows.map((row) => withNormalizedPhoto(row, baseUrl));
 
 const ADMIN_EMAILS = normalizeEnvList(process.env.ADMIN_EMAILS);
 const ADMIN_USERNAMES = normalizeEnvList(process.env.ADMIN_USERNAMES);
@@ -268,7 +288,7 @@ router.post("/add-candidate", adminMiddleware, async (req, res) => {
   const { name, lga, photoUrl, photoData } = req.body || {};
   const trimmedName = typeof name === "string" ? name.trim() : "";
   const trimmedLga = typeof lga === "string" ? lga.trim() : "";
-  let normalizedPhotoUrl = normalizePhotoUrlValue(photoUrl);
+  let normalizedPhotoUrl = normalizePhotoPath(photoUrl);
   let storedFilePath = null;
 
   if (photoData) {
@@ -334,6 +354,7 @@ router.delete("/remove-candidate", adminMiddleware, async (req, res) => {
 
 router.get("/get-candidates", adminMiddleware, async (req, res) => {
   try {
+    const baseUrl = getPublicBaseUrl(req);
     const latestPeriod = await getLatestPeriod();
 
     if (latestPeriod) {
@@ -341,13 +362,13 @@ router.get("/get-candidates", adminMiddleware, async (req, res) => {
         `SELECT * FROM Candidates WHERE periodId = ? OR periodId IS NULL ORDER BY createdAt DESC`,
         [latestPeriod.id]
       );
-      return res.json(normalizeCandidateRows(rows));
+      return res.json(normalizeCandidateRows(rows, baseUrl));
     }
 
     const rows = await query(
       "SELECT * FROM Candidates WHERE periodId IS NULL ORDER BY createdAt DESC"
     );
-    res.json(normalizeCandidateRows(rows));
+    res.json(normalizeCandidateRows(rows, baseUrl));
   } catch (error) {
     console.error("Get candidates error:", error);
     res.status(500).json({ error: "Fetch failed" });
@@ -361,11 +382,12 @@ router.get("/candidates", adminMiddleware, async (req, res) => {
   }
 
   try {
+    const baseUrl = getPublicBaseUrl(req);
     const rows = await query(
       `SELECT * FROM Candidates WHERE periodId = ? ORDER BY votes DESC, name ASC`,
       [periodId]
     );
-    res.json(normalizeCandidateRows(rows));
+    res.json(normalizeCandidateRows(rows, baseUrl));
   } catch (error) {
     console.error("Get candidates for period error:", error);
     res.status(500).json({ error: "Fetch failed" });
@@ -394,6 +416,7 @@ router.get("/results", adminMiddleware, async (req, res) => {
       targetPeriodId = latestPeriod.id;
     }
 
+    const baseUrl = getPublicBaseUrl(req);
     const rows = await query(
       `SELECT c.id, c.name, c.lga, c.photoUrl, c.votes
        FROM Candidates c
@@ -401,7 +424,7 @@ router.get("/results", adminMiddleware, async (req, res) => {
        ORDER BY c.votes DESC, c.name ASC`,
       [targetPeriodId]
     );
-    res.json(normalizeCandidateRows(rows));
+    res.json(normalizeCandidateRows(rows, baseUrl));
   } catch (error) {
     console.error("Get results error:", error);
     res.status(500).json({ error: "Failed to fetch results" });

@@ -1,10 +1,24 @@
 // frontend/pages/past-results.js
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import { resolveImageUrl } from "../utils/resolveImageUrl";
 
 const serverUrl = process.env.NEXT_PUBLIC_API_URL;
 const placeholderImage = "/placeholder.svg";
+const buildPhotoSrc = (...values) => {
+  for (const raw of values) {
+    const resolved = resolveImageUrl(raw, serverUrl);
+    if (resolved) return resolved;
+  }
+  return placeholderImage;
+};
+const handleImgError = (event) => {
+  event.currentTarget.onerror = null;
+  event.currentTarget.src = placeholderImage;
+};
 
 export default function PastResults() {
+  const router = useRouter();
   const [periods, setPeriods] = useState([]);
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [candidates, setCandidates] = useState([]);
@@ -12,9 +26,21 @@ export default function PastResults() {
   const [noParticipation, setNoParticipation] = useState(false);
 
   const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    setAuthReady(true);
+  }, [router]);
 
   // Load only periods user participated in
   const loadPeriods = async () => {
+    if (!authReady) return;
     if (!userId) return;
     try {
       const res = await fetch(`${serverUrl}/api/public/periods?userId=${userId}`);
@@ -32,6 +58,7 @@ export default function PastResults() {
   };
 
   const loadDataForPeriod = async (pId) => {
+    if (!authReady) return;
     if (!userId) return;
     // First fetch the candidates
     try {
@@ -69,14 +96,20 @@ export default function PastResults() {
   };
 
   useEffect(() => {
+    if (!authReady) return;
     loadPeriods();
-  }, []);
+  }, [authReady]);
 
   useEffect(() => {
+    if (!authReady) return;
     if (selectedPeriod) {
       loadDataForPeriod(selectedPeriod);
     }
-  }, [selectedPeriod]);
+  }, [selectedPeriod, authReady]);
+
+  if (!authReady) {
+    return null;
+  }
 
   return (
     <div className="space-y-10">
@@ -108,7 +141,8 @@ export default function PastResults() {
             {candidates.map((c) => (
               <div key={c.id} className="glass-card flex h-full flex-col items-center gap-4 px-6 py-8 text-center">
                 <img
-                  src={c.photoUrl || placeholderImage}
+                  src={buildPhotoSrc(c.photoSrc, c.photoUrl)}
+                  onError={handleImgError}
                   alt={c.name}
                   className="h-24 w-24 rounded-full border border-slate-200 object-cover shadow-sm"
                 />
@@ -138,7 +172,8 @@ export default function PastResults() {
                 className="glass-card flex h-full flex-col items-center gap-4 px-6 py-8 text-center"
               >
                 <img
-                  src={result.photoUrl || placeholderImage}
+                  src={buildPhotoSrc(result.photoSrc, result.photoUrl)}
+                  onError={handleImgError}
                   alt={result.name}
                   className="h-24 w-24 rounded-full border border-slate-200 object-cover shadow-sm"
                 />

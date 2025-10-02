@@ -6,23 +6,43 @@ const router = express.Router();
 const getLatestPeriod = async () =>
   queryOne("SELECT TOP (1) * FROM VotingPeriod ORDER BY id DESC");
 
-const normalizePhotoUrlValue = (value) => {
+const normalizePhotoPath = (value) => {
   if (value === null || value === undefined) return null;
   const stringValue = typeof value === "string" ? value : String(value);
   const trimmed = stringValue.trim();
   if (!trimmed) return null;
-  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith("/")) {
-    return trimmed;
-  }
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("/")) return trimmed;
   return `/${trimmed}`;
 };
 
-const withNormalizedPhoto = (candidate) => {
-  if (!candidate) return candidate;
-  return { ...candidate, photoUrl: normalizePhotoUrlValue(candidate.photoUrl) };
+const buildAbsolutePhotoUrl = (value, baseUrl) => {
+  const normalized = normalizePhotoPath(value);
+  if (!normalized) return null;
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  if (!baseUrl) return normalized;
+  const sanitizedBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  return `${sanitizedBase}${normalized}`;
 };
 
-const normalizeCandidateRows = (rows = []) => rows.map(withNormalizedPhoto);
+const getPublicBaseUrl = (req) => {
+  const configured = process.env.PUBLIC_BASE_URL;
+  if (configured && configured.trim()) {
+    const trimmed = configured.trim();
+    return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+  }
+  const protocol = req.protocol || "http";
+  const host = req.get("host");
+  return host ? `${protocol}://${host}` : "";
+};
+
+const withNormalizedPhoto = (candidate, baseUrl) => {
+  if (!candidate) return candidate;
+  const normalizedPhoto = buildAbsolutePhotoUrl(candidate.photoUrl, baseUrl);
+  return { ...candidate, photoUrl: normalizedPhoto, photoSrc: normalizedPhoto };
+};
+
+const normalizeCandidateRows = (rows = [], baseUrl) => rows.map((row) => withNormalizedPhoto(row, baseUrl));
 
 router.get("/period", async (req, res) => {
   try {
@@ -48,6 +68,7 @@ router.get("/candidates", async (req, res) => {
       targetPeriodId = period.id;
     }
 
+    const baseUrl = getPublicBaseUrl(req);
     const rows = await query(
       `SELECT id, name, lga, photoUrl, votes, periodId, published
        FROM Candidates
@@ -56,7 +77,7 @@ router.get("/candidates", async (req, res) => {
       [targetPeriodId]
     );
 
-    res.json(normalizeCandidateRows(rows));
+    res.json(normalizeCandidateRows(rows, baseUrl));
   } catch (error) {
     console.error("Public get candidates error:", error);
     res.status(500).json({ error: "Failed to fetch candidates" });
@@ -124,6 +145,7 @@ router.get("/public-results", async (req, res) => {
       }
     }
 
+    const baseUrl = getPublicBaseUrl(req);
     const rows = await query(
       `SELECT c.id, c.name, c.lga, c.photoUrl, c.votes
        FROM Candidates c
@@ -132,7 +154,7 @@ router.get("/public-results", async (req, res) => {
       [periodId]
     );
 
-    res.json({ published: true, results: normalizeCandidateRows(rows) });
+    res.json({ published: true, results: normalizeCandidateRows(rows, baseUrl) });
   } catch (error) {
     console.error("Public get results error:", error);
     res.status(500).json({ error: "Failed to fetch results" });
