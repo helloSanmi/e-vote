@@ -79,72 +79,80 @@ export default function PastResults() {
   }, [selectedPeriod]);
 
   return (
-    <div className="max-w-5xl mx-auto p-4 bg-white rounded-lg shadow space-y-8">
-      <h1 className="text-2xl font-bold text-gray-800 text-center">Past Results</h1>
-      <select
-        className="border p-2 rounded w-full"
-        value={selectedPeriod || ""}
-        onChange={(e) => setSelectedPeriod(e.target.value)}
-      >
-        <option value="">Select a Past Period</option>
-        {periods.map((p) => (
-          <option key={p.id} value={p.id}>
-            Period {p.id} (Starts: {new Date(p.startTime).toLocaleString()}, Ends:{" "}
-            {new Date(p.endTime).toLocaleString()})
-          </option>
-        ))}
-      </select>
+    <div className="space-y-10">
+      <section className="glass-card mx-auto max-w-4xl px-8 py-10 text-center">
+        <h1 className="text-3xl font-bold text-slate-900">Past Results</h1>
+        <p className="mt-3 text-slate-600">
+          Browse completed election periods you participated in to view candidate line-ups and final tallies.
+        </p>
+        <div className="mt-6">
+          <select
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            value={selectedPeriod || ""}
+            onChange={(e) => setSelectedPeriod(e.target.value)}
+          >
+            <option value="">Select a Past Period</option>
+            {periods.map((p) => (
+              <option key={p.id} value={p.id} className="bg-white text-slate-700">
+                Period {p.id} (Starts: {new Date(p.startTime).toLocaleString()}, Ends: {new Date(p.endTime).toLocaleString()})
+              </option>
+            ))}
+          </select>
+        </div>
+      </section>
 
       {selectedPeriod && candidates.length > 0 && !noParticipation && (
-        <div>
-          <h2 className="text-xl font-semibold text-gray-700 mb-4 text-center">
-            Candidates for Period {selectedPeriod}
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <section className="space-y-6">
+          <h2 className="text-center text-xl font-semibold text-slate-900">Candidates for Period {selectedPeriod}</h2>
+          <div className="mx-auto grid w-full max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {candidates.map((c) => (
-              <div key={c.id} className="border p-4 rounded flex flex-col items-center bg-gray-50">
+              <div key={c.id} className="glass-card flex h-full flex-col items-center gap-4 px-6 py-8 text-center">
                 <img
                   src={c.photoUrl || placeholderImage}
                   alt={c.name}
-                  className="w-24 h-24 rounded-full mb-2 object-cover"
+                  className="h-24 w-24 rounded-full border border-slate-200 object-cover shadow-sm"
                 />
-                <h4 className="font-semibold text-center text-gray-700">{c.name}</h4>
-                <p className="text-sm text-center text-gray-600">{c.lga}</p>
+                <div>
+                  <h4 className="text-lg font-semibold text-slate-900">{c.name}</h4>
+                  <p className="mt-1 text-sm text-slate-500">{c.lga}</p>
+                </div>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
       {selectedPeriod && noParticipation && (
-        <p className="text-red-600 text-center font-semibold">
+        <div className="glass-card mx-auto max-w-3xl px-6 py-6 text-center text-sm font-semibold text-red-600">
           You did not participate in this voting period, so you cannot view these results.
-        </p>
+        </div>
       )}
 
       {selectedPeriod && results.length > 0 && !noParticipation && (
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold text-gray-700 mb-4 text-center">
-            Results for Period {selectedPeriod}
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+        <section className="space-y-6">
+          <h2 className="text-center text-xl font-semibold text-slate-900">Results for Period {selectedPeriod}</h2>
+          <div className="mx-auto grid w-full max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {results.map((result) => (
               <div
                 key={result.name}
-                className="border rounded-lg p-4 bg-gray-50 flex flex-col items-center text-center"
+                className="glass-card flex h-full flex-col items-center gap-4 px-6 py-8 text-center"
               >
                 <img
                   src={result.photoUrl || placeholderImage}
                   alt={result.name}
-                  className="w-24 h-24 rounded-full mb-4 object-cover"
+                  className="h-24 w-24 rounded-full border border-slate-200 object-cover shadow-sm"
                 />
-                <h2 className="text-lg font-semibold text-gray-700">{result.name}</h2>
-                <p className="text-sm text-gray-500 mb-2">{result.lga}</p>
-                <span className="text-xl font-bold text-blue-600">{result.votes} Votes</span>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">{result.name}</h3>
+                  <p className="mt-1 text-sm text-slate-500">{result.lga}</p>
+                </div>
+                <div className="mt-auto rounded-full border border-blue-200 bg-blue-50 px-4 py-1 text-sm font-semibold text-blue-700">
+                  {result.votes} Votes
+                </div>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

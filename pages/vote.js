@@ -148,11 +148,11 @@ export default function Vote() {
 
   if (!period) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md text-center">
-          <h2 className="text-2xl font-bold mb-4">No Voting Currently</h2>
-          <p className="mb-4 text-gray-700">
-            No voting session is active right now. Please check back later!
+      <div className="mx-auto max-w-xl">
+        <div className="glass-card px-8 py-12 text-center">
+          <h2 className="text-2xl font-semibold text-slate-900">No Voting Currently</h2>
+          <p className="mt-4 text-slate-600">
+            There is no active voting session at the moment. Please check back later for the next election window.
           </p>
         </div>
       </div>
@@ -160,109 +160,133 @@ export default function Vote() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-3xl relative text-center">
-        {message && (
-          <div className="mb-4 text-sm font-semibold text-red-600">{message}</div>
-        )}
-        {votingNotStarted && !votingEnded ? (
-          <>
-            <h2 className="text-2xl font-bold mb-4">Voting has not started yet</h2>
-            {timeLeft && <p className="text-lg">Starts in: {timeLeft}</p>}
-            <p className="mt-4 text-gray-600">
-              Check back once the countdown finishes.
-            </p>
-          </>
-        ) : null}
+    <div className="space-y-10">
+      {message && (
+        <div className="glass-card mx-auto max-w-3xl px-6 py-4 text-center text-sm font-semibold text-red-600">
+          {message}
+        </div>
+      )}
 
-        {!votingNotStarted && !votingEnded && (
-          <>
-            <h1 className="text-2xl font-bold mb-6 text-gray-800">Vote for Your Candidate</h1>
-            {timeLeft && <p className="mb-4">Voting ends in: {timeLeft}</p>}
+      {votingNotStarted && !votingEnded && (
+        <div className="glass-card mx-auto max-w-3xl px-8 py-10 text-center">
+          <h2 className="text-2xl font-bold text-slate-900">Voting has not started yet</h2>
+          {timeLeft && <p className="mt-4 text-lg text-blue-600">Starts in: {timeLeft}</p>}
+          <p className="mt-6 text-slate-600">
+            The voting booth will open automatically when the countdown ends. Stay close so you do not miss your chance.
+          </p>
+        </div>
+      )}
+
+      {!votingNotStarted && !votingEnded && (
+        <div className="space-y-8">
+          <div className="glass-card mx-auto max-w-4xl px-8 py-10 text-center">
+            <h1 className="text-3xl font-bold text-slate-900">Vote for Your Candidate</h1>
+            {timeLeft && <p className="mt-3 text-sm font-medium text-blue-600 uppercase tracking-[0.3em]">Voting ends in {timeLeft}</p>}
             {alreadyVotedCandidate && (
-              <p className="mb-2 text-green-600 font-semibold">
+              <p className="mt-4 text-sm font-semibold text-emerald-600">
                 You have already voted for {alreadyVotedCandidate}.
               </p>
             )}
-            {candidates.length === 0 && (
-              <p className="text-center text-gray-700">No candidates available.</p>
+            {!alreadyVotedCandidate && (
+              <p className="mt-4 text-slate-600">
+                Select a candidate below and submit your choice. You can only vote once per election period.
+              </p>
             )}
-            {candidates.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                {candidates.map((candidate) => {
-                  const isSelected = selectedCandidate === candidate.id;
-                  const isDisabled = alreadyVotedCandidate && !isSelected;
-                  return (
-                    <div
-                      key={candidate.id}
-                      onClick={() => {
-                        if (!alreadyVotedCandidate) setSelectedCandidate(candidate.id);
-                      }}
-                      className={`cursor-pointer border rounded-lg p-4 flex flex-col items-center text-center bg-gray-50
-                        ${isSelected ? "border-blue-500" : "border-gray-300"}
-                        ${isDisabled ? "opacity-50 pointer-events-none" : ""}`}
-                    >
-                      <img
-                        src={candidate.photoUrl || placeholderImage}
-                        alt={candidate.name}
-                        className="w-24 h-24 rounded-full mb-4 object-cover"
-                      />
-                      <h2 className="text-lg font-medium text-gray-700">{candidate.name}</h2>
-                      <p className="text-sm text-gray-500">{candidate.lga}</p>
-                    </div>
-                  );
-                })}
+          </div>
+
+          <div className="mx-auto grid w-full max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {candidates.length === 0 && (
+              <div className="glass-card col-span-full px-6 py-8 text-center text-slate-600">
+                No candidates available at the moment.
               </div>
             )}
-            {!alreadyVotedCandidate && selectedCandidate && candidates.length > 0 && (
+            {candidates.map((candidate) => {
+              const isSelected = selectedCandidate === candidate.id;
+              const isDisabled = alreadyVotedCandidate && !isSelected;
+              return (
+                <button
+                  type="button"
+                  key={candidate.id}
+                  onClick={() => {
+                    if (!alreadyVotedCandidate) setSelectedCandidate(candidate.id);
+                  }}
+                  disabled={isDisabled}
+                  className={`glass-card flex flex-col items-center gap-4 px-6 py-8 text-center transition ${
+                    isSelected ? "border-blue-400 ring-2 ring-blue-200" : "hover:border-blue-200"
+                  } ${isDisabled ? "opacity-60" : ""}`}
+                >
+                  <img
+                    src={candidate.photoUrl || placeholderImage}
+                    alt={candidate.name}
+                    className="h-24 w-24 rounded-full border border-slate-200 object-cover shadow-sm"
+                  />
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900">{candidate.name}</h2>
+                    <p className="mt-1 text-sm text-slate-500">{candidate.lga}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {!alreadyVotedCandidate && selectedCandidate && candidates.length > 0 && (
+            <div className="mx-auto flex w-full max-w-3xl justify-center">
               <button
                 onClick={handleVote}
-                className="mt-6 w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition"
+                className="flex w-full items-center justify-center gap-3 rounded-full bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 sm:w-auto"
               >
                 Submit Vote
               </button>
-            )}
-            {alreadyVotedCandidate && (
-              <p className="mt-4 text-gray-600">You have already cast your vote. Thank you!</p>
-            )}
-          </>
-        )}
-
-        {votingEnded && (
-          <>
-            <h2 className="text-2xl font-bold mb-4">Voting has ended</h2>
-            {!resultsPublished && <p>Results will be published soon.</p>}
-            {resultsPublished && (
-              <div className="flex flex-col space-y-4 items-center mt-4">
-                <a
-                  href="/results"
-                  className="text-white bg-blue-600 px-4 py-2 rounded hover:bg-blue-700 transition"
-                >
-                  View Current Results
-                </a>
-                <a href="/past-results" className="text-blue-600 underline">
-                  View Past Results
-                </a>
-              </div>
-            )}
-          </>
-        )}
-
-        {showVoteModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded p-6 shadow-md w-full max-w-sm text-center">
-              <h2 className="text-xl font-bold mb-4">Vote Submitted</h2>
-              <p className="mb-4">Your vote has been recorded successfully!</p>
-              <button
-                onClick={() => setShowVoteModal(false)}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-              >
-                OK
-              </button>
             </div>
+          )}
+
+          {alreadyVotedCandidate && (
+            <div className="glass-card mx-auto max-w-3xl px-6 py-5 text-center text-sm text-emerald-600">
+              Thank you! Your vote has already been recorded.
+            </div>
+          )}
+        </div>
+      )}
+
+      {votingEnded && (
+        <div className="glass-card mx-auto max-w-3xl px-8 py-10 text-center">
+          <h2 className="text-2xl font-bold text-slate-900">Voting has ended</h2>
+          {!resultsPublished && (
+            <p className="mt-4 text-slate-600">Results will be published shortly. Stay tuned.</p>
+          )}
+          {resultsPublished && (
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+              <a
+                href="/results"
+                className="rounded-full bg-blue-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
+              >
+                View Current Results
+              </a>
+              <a
+                href="/past-results"
+                className="rounded-full border border-slate-200 px-6 py-2 text-sm font-semibold text-slate-600 transition hover:border-blue-400 hover:text-blue-600"
+              >
+                View Past Results
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showVoteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur">
+          <div className="glass-card w-full max-w-sm px-6 py-8 text-center">
+            <h2 className="text-xl font-semibold text-slate-900">Vote Submitted</h2>
+            <p className="mt-3 text-sm text-slate-600">Your vote has been recorded successfully!</p>
+            <button
+              onClick={() => setShowVoteModal(false)}
+              className="mt-6 inline-flex rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
+            >
+              OK
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

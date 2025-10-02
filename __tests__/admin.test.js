@@ -99,11 +99,12 @@ describe('Admin page', () => {
 
     const nameInput = screen.getByPlaceholderText('Candidate Name');
     const lgaInput = screen.getByPlaceholderText('LGA');
-    const photoInput = screen.getByPlaceholderText('Photo URL');
+    const photoInput = screen.getByLabelText('Candidate Photo');
 
     await userEvent.type(nameInput, 'New Candidate');
     await userEvent.type(lgaInput, 'South');
-    await userEvent.type(photoInput, 'https://example.com/photo.jpg');
+    const file = new File(['avatar'], 'photo.png', { type: 'image/png' });
+    await userEvent.upload(photoInput, file);
 
     const addButton = screen.getByRole('button', { name: 'Add Candidate' });
     await userEvent.click(addButton);
@@ -111,6 +112,13 @@ describe('Admin page', () => {
     await waitFor(() =>
       expect(screen.getByText('Candidate added successfully')).toBeInTheDocument()
     );
+
+    const addCall = global.fetch.mock.calls.find(([url]) =>
+      url.includes('/api/admin/add-candidate')
+    );
+    expect(addCall).toBeTruthy();
+    const parsed = JSON.parse(addCall[1].body);
+    expect(parsed.photoData).toMatch(/^data:image\/png;base64,/);
   });
 
   test('handles start voting failures gracefully', async () => {

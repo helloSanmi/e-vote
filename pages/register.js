@@ -81,117 +81,122 @@ export default function Register() {
   };
 
   return (
-    <div className="relative w-full max-w-md mx-auto mt-20">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full border border-gray-200">
-        <h1 className="text-2xl font-bold mb-6 text-gray-800 text-center">Register</h1>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Full Name */}
+    <div className="mx-auto grid max-w-5xl gap-8 py-8 md:grid-cols-[1.05fr_1fr]">
+      <section className="glass-card hidden flex-col gap-6 px-8 py-10 md:flex">
+        <div>
+          <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
+            Join the Community
+          </span>
+          <h1 className="mt-6 text-3xl font-bold text-slate-900">Create your voter profile</h1>
+          <p className="mt-3 text-slate-600">
+            Register in minutes and unlock secure access to every Tech Analytics election event.
+          </p>
+        </div>
+        <ul className="space-y-3 text-sm text-slate-600">
+          <li className="flex items-start gap-3">
+            <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">1</span>
+            Fill in your full name and preferred username for identification.
+          </li>
+          <li className="flex items-start gap-3">
+            <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">2</span>
+            Provide a valid email and password — we’ll verify your vote with these details.
+          </li>
+          <li className="flex items-start gap-3">
+            <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">3</span>
+            Cast your ballot, follow real-time stats, and revisit past elections.
+          </li>
+        </ul>
+      </section>
+
+      <div className="glass-card px-8 py-10">
+        <h2 className="text-2xl font-semibold text-slate-900 text-center">Register</h2>
+        <p className="mt-2 text-center text-sm text-slate-600">Complete the form below to get started with secure e-voting.</p>
+        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Full Name</label>
             <input
               type="text"
               name="fullName"
               value={formData.fullName}
               onChange={handleChange}
-              className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2"
+              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-300"
               placeholder="Your full name"
               required
               minLength={3}
             />
           </div>
-
-          {/* Username */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Username</label>
             <input
               type="text"
               name="username"
               value={formData.username}
               onChange={handleChange}
-              className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2"
+              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-300"
               placeholder="Choose a username"
               required
               minLength={3}
             />
           </div>
-
-          {/* Email */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Email</label>
             <input
               type="email"
               name="email"
               value={formData.email}
               onChange={handleChange}
-              className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2"
+              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-300"
               placeholder="yourname@example.com"
               required
               pattern="^[^@\s]+@[^@\s]+\.[^@\s]+$"
             />
           </div>
-
-          {/* Password */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Password</label>
             <input
               type="password"
               name="password"
               value={formData.password}
               onChange={handleChange}
-              className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2"
+              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-300"
               placeholder="Choose a strong password"
               required
               minLength={6}
               title="Password must be at least 6 characters long"
             />
           </div>
-
-          {/* Submit Button */}
-          <button className="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-blue-700 transition">
+          <button className="flex w-full items-center justify-center gap-3 rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-400" disabled={loading}>
             {loading ? (
-              <div className="flex items-center justify-center">
-                <div className="loader ease-linear rounded-full border-4 border-t-4 border-white h-5 w-5 mr-2"></div>
+              <>
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-transparent"></span>
                 Registering...
-              </div>
+              </>
             ) : (
               "Register"
             )}
           </button>
         </form>
-
-        <div className="text-center mt-4">
-          <a href="/login" className="text-blue-600 underline text-sm">
-            Already have an account? Go to Login
+        <div className="mt-6 text-center text-sm text-slate-600">
+          Already have an account? {" "}
+          <a href="/login" className="font-semibold text-emerald-600 transition hover:text-emerald-500">
+            Go to Login
           </a>
         </div>
       </div>
 
-      {/* Error Modal */}
       {errorModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded p-6 shadow-md w-full max-w-sm text-center">
-            <p className="mb-4 text-gray-700">{errorMessage}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur">
+          <div className="glass-card w-full max-w-sm px-6 py-6 text-center">
+            <p className="text-sm text-slate-700">{errorMessage}</p>
             <button
               onClick={() => setErrorModal(false)}
-              className="px-4 py-2 bg-red-200 text-gray-800 rounded hover:bg-red-300 transition"
+              className="mt-4 inline-flex rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-700 transition hover:border-emerald-500 hover:text-emerald-600"
             >
               OK
             </button>
           </div>
         </div>
       )}
-
-      <style jsx>{`
-        .loader {
-          border-top-color: transparent;
-          animation: spinner 0.6s linear infinite;
-        }
-        @keyframes spinner {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
     </div>
   );
 }

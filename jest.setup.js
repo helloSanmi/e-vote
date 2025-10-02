@@ -23,4 +23,36 @@ if (typeof window !== 'undefined') {
       dispatchEvent: jest.fn(),
     };
   };
+
+  if (!window.FileReader) {
+    class MockFileReader {
+      constructor() {
+        this.result = null;
+        this.onload = null;
+        this.onerror = null;
+      }
+
+      readAsDataURL(file) {
+        try {
+          const type = file?.type || 'application/octet-stream';
+          const base = Buffer.from(file?.name || '').toString('base64');
+          this.result = `data:${type};base64,${base}`;
+          if (typeof this.onload === 'function') {
+            this.onload({ target: { result: this.result } });
+          }
+        } catch (error) {
+          if (typeof this.onerror === 'function') {
+            this.onerror(error);
+          }
+        }
+      }
+    }
+
+    Object.defineProperty(window, 'FileReader', {
+      writable: true,
+      configurable: true,
+      value: MockFileReader,
+    });
+    global.FileReader = MockFileReader;
+  }
 }

@@ -74,68 +74,99 @@ export default function Login() {
   };
 
   return (
-    <div className="relative w-full max-w-md mx-auto mt-20">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full border border-gray-200">
-        <h1 className="text-2xl font-bold mb-6 text-gray-800 text-center">Login</h1>
-        <form onSubmit={handleSubmit} className="space-y-6">
+    <div className="mx-auto grid max-w-5xl gap-8 py-8 md:grid-cols-[1.05fr_1fr]">
+      <section className="glass-card hidden flex-col gap-6 px-8 py-10 md:flex">
+        <div>
+          <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-blue-700">
+            Welcome Back
+          </span>
+          <h1 className="mt-6 text-3xl font-bold text-slate-900">Sign in to continue voting</h1>
+          <p className="mt-3 text-slate-600">
+            Access the live voting booth, monitor results in real time, and manage your participation with ease.
+          </p>
+        </div>
+        <ul className="space-y-3 text-sm text-slate-600">
+          <li className="flex items-start gap-3">
+            <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-600">1</span>
+            Enter your registered email or username alongside your password.
+          </li>
+          <li className="flex items-start gap-3">
+            <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-600">2</span>
+            Instantly connect to ongoing elections and cast a single, secure vote.
+          </li>
+          <li className="flex items-start gap-3">
+            <span className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-600">3</span>
+            Review both live and past results once you have participated.
+          </li>
+        </ul>
+      </section>
+
+      <div className="glass-card px-8 py-10">
+        <h2 className="text-2xl font-semibold text-slate-900">Login</h2>
+        <p className="mt-2 text-sm text-slate-600">Enter your credentials to access the Tech Analytics voting experience.</p>
+        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email or Username</label>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Email or Username</label>
             <input
               type="text"
               name="email"
               value={formData.email}
               onChange={handleChange}
-              className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2"
+              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
               placeholder="Enter your email or username"
               required
               minLength={3}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Password</label>
             <input
               type="password"
               name="password"
               value={formData.password}
               onChange={handleChange}
-              className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2"
+              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
               placeholder="Enter your password"
               required
               minLength={6}
               title="Password must be at least 6 characters long"
             />
           </div>
-          <button className="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-blue-700 transition">
+          <button className="flex w-full items-center justify-center gap-3 rounded-full bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500" disabled={loading}>
             {loading ? (
-              <div className="flex items-center justify-center">
-                <div className="loader ease-linear rounded-full border-4 border-t-4 border-white h-5 w-5 mr-2"></div>
+              <>
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-transparent"></span>
                 Logging in...
-              </div>
+              </>
             ) : (
               "Login"
             )}
           </button>
         </form>
-        <div className="text-center mt-4">
-          <button onClick={() => setShowForgotModal(true)} className="text-blue-600 underline text-sm">Forgot Password?</button>
+        <div className="mt-6 text-center">
+          <button onClick={() => setShowForgotModal(true)} className="text-sm font-semibold text-blue-600 transition hover:text-blue-500">
+            Forgot Password?
+          </button>
         </div>
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded p-6 shadow-md w-full max-w-sm">
-            <h2 className="text-xl font-bold mb-4">User not found</h2>
-            <p className="mb-4">You have not registered yet. Would you like to register?</p>
-            <div className="flex space-x-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur">
+          <div className="glass-card w-full max-w-sm px-6 py-8 text-left">
+            <h3 className="text-xl font-semibold text-slate-900">User not found</h3>
+            <p className="mt-3 text-sm text-slate-600">
+              You have not registered yet. Would you like to create an account now?
+            </p>
+            <div className="mt-6 flex gap-3">
               <button
                 onClick={() => setShowModal(false)}
-                className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 transition"
+                className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-blue-400 hover:text-blue-600"
               >
                 Cancel
               </button>
               <button
                 onClick={() => { setShowModal(false); router.push("/register"); }}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                className="flex-1 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
               >
                 Register
               </button>
@@ -145,12 +176,12 @@ export default function Login() {
       )}
 
       {errorModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded p-6 shadow-md w-full max-w-sm text-center">
-            <p className="mb-4 text-gray-700">{message}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur">
+          <div className="glass-card w-full max-w-sm px-6 py-6 text-center">
+            <p className="text-sm text-slate-700">{message}</p>
             <button
               onClick={() => setErrorModal(false)}
-              className="px-4 py-2 bg-red-200 text-gray-800 rounded hover:bg-red-300 transition"
+              className="mt-4 inline-flex rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-600"
             >
               OK
             </button>
@@ -159,43 +190,35 @@ export default function Login() {
       )}
 
       {showForgotModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded p-6 shadow-md w-full max-w-sm">
-            <h2 className="text-xl font-bold mb-4 text-center">Reset Password</h2>
-            <form onSubmit={handleForgotSubmit} className="space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur">
+          <div className="glass-card w-full max-w-sm px-6 py-8">
+            <h3 className="text-xl font-semibold text-slate-900 text-center">Reset Password</h3>
+            <form onSubmit={handleForgotSubmit} className="mt-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Enter your email</label>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Enter your email</label>
                 <input
                   type="email"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value.trim())}
-                  className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
                   placeholder="yourname@example.com"
                   required
                   pattern="^[^@\s]+@[^@\s]+\.[^@\s]+$"
                 />
               </div>
-              <button className="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-semibold hover:bg-blue-700 transition">
+              <button className="flex w-full items-center justify-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500">
                 Send Reset Link
               </button>
             </form>
-            {forgotMessage && <p className="mt-4 text-gray-700 text-center">{forgotMessage}</p>}
-            <div className="text-center mt-4">
-              <button onClick={() => {setShowForgotModal(false); setForgotMessage("");}} className="text-gray-600 underline text-sm">Close</button>
+            {forgotMessage && <p className="mt-4 text-center text-sm text-slate-600">{forgotMessage}</p>}
+            <div className="mt-4 text-center">
+              <button onClick={() => {setShowForgotModal(false); setForgotMessage("");}} className="text-sm font-semibold text-blue-600 transition hover:text-blue-500">
+                Close
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      <style jsx>{`
-        .loader {
-          border-top-color: transparent;
-          animation: spinner 0.6s linear infinite;
-        }
-        @keyframes spinner {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }

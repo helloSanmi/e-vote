@@ -5,12 +5,12 @@ import io from "socket.io-client";
 function PopupModal({ show, message, onClose }) {
   if (!show) return null;
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded shadow-md max-w-sm w-full text-center">
-        <p className="mb-4 text-gray-700">{message}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur">
+      <div className="glass-card w-full max-w-sm px-6 py-6 text-center">
+        <p className="text-sm text-slate-700">{message}</p>
         <button
           onClick={onClose}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+          className="mt-4 inline-flex rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
         >
           OK
         </button>
@@ -128,11 +128,11 @@ export default function Results() {
     return (
       <>
         <PopupModal show={showPopup} message={message} onClose={closePopup} />
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full text-center">
-            <h1 className="text-2xl font-bold mb-6 text-gray-800">Results not available</h1>
-            <p className="text-gray-700">
-              {message || "Please wait until results are published or confirm you participated."}
+        <div className="mx-auto max-w-xl">
+          <div className="glass-card px-8 py-12 text-center">
+            <h1 className="text-2xl font-semibold text-slate-900">Results not available</h1>
+            <p className="mt-4 text-slate-600">
+              {message || "Please wait until results are published or confirm you participated in the voting session."}
             </p>
           </div>
         </div>
@@ -143,27 +143,37 @@ export default function Results() {
   return (
     <>
       <PopupModal show={showPopup} message={message} onClose={closePopup} />
-      <div className="min-h-screen bg-gray-100 p-4 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-5xl">
-          <h1 className="text-2xl font-bold mb-6 text-gray-800 text-center">Election Results</h1>
-          <p className="mb-8 text-gray-700 text-center">Total Votes Cast: {totalVotes}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
-            {results.map((result) => (
-              <div
-                key={result.name}
-                className="border rounded-lg p-4 bg-gray-50 flex flex-col items-center text-center"
-              >
-                <img
-                  src={result.photoUrl || placeholderImage}
-                  alt={result.name}
-                  className="w-24 h-24 rounded-full mb-4 object-cover"
-                />
-                <h2 className="text-lg font-semibold text-gray-700">{result.name}</h2>
-                <p className="text-sm text-gray-500 mb-2">{result.lga}</p>
-                <span className="text-xl font-bold text-blue-600">{result.votes} Votes</span>
+      <div className="space-y-8">
+        <section className="glass-card mx-auto max-w-4xl px-8 py-10 text-center">
+          <h1 className="text-3xl font-bold text-slate-900">Election Results</h1>
+          <p className="mt-4 text-sm font-medium uppercase tracking-[0.3em] text-blue-600">
+            Total Votes Cast: {totalVotes}
+          </p>
+          <p className="mt-4 text-slate-600">
+            Only participants of this voting period can view the final tally. Share the results responsibly.
+          </p>
+        </section>
+
+        <div className="mx-auto grid w-full max-w-6xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {results.map((result) => (
+            <div
+              key={result.name}
+              className="glass-card flex h-full flex-col items-center gap-4 px-6 py-8 text-center"
+            >
+              <img
+                src={result.photoUrl || placeholderImage}
+                alt={result.name}
+                className="h-24 w-24 rounded-full border border-slate-200 object-cover shadow-sm"
+              />
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">{result.name}</h2>
+                <p className="mt-1 text-sm text-slate-500">{result.lga}</p>
               </div>
-            ))}
-          </div>
+              <div className="mt-auto flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-1 text-sm font-semibold text-blue-700">
+                {result.votes} Votes
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </>

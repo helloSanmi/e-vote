@@ -9,19 +9,30 @@
 // frontend/pages/faq.js
 export default function FAQ() {
     return (
-      <div className="max-w-3xl mx-auto bg-white p-8 rounded-lg shadow space-y-6">
-        <h1 className="text-2xl font-bold text-gray-800">Frequently Asked Questions</h1>
-        <div>
-          <h2 className="font-semibold text-gray-700">How does voting work?</h2>
-          <p className="text-gray-600">You need to register and then log in. Once the voting period starts, select your candidate and submit your vote. You can only vote once per period.</p>
+      <div className="space-y-8">
+        <div className="glass-card mx-auto max-w-4xl px-8 py-10 text-center">
+          <h1 className="text-3xl font-bold text-slate-900">Frequently Asked Questions</h1>
+          <p className="mt-3 text-slate-600">
+            Quick answers about how Tech Analytics voters interact with the platform.
+          </p>
         </div>
-        <div>
-          <h2 className="font-semibold text-gray-700">Can I see past results?</h2>
-          <p className="text-gray-600">Yes, click on "Past Results" to view previous voting sessions.</p>
-        </div>
-        <div>
-          <h2 className="font-semibold text-gray-700">Is my vote secure?</h2>
-          <p className="text-gray-600">Yes, votes are recorded securely and you cannot vote more than once per session. Results are only published by the admin after voting ends.</p>
+
+        <div className="mx-auto grid w-full max-w-4xl gap-6">
+          {[{
+            title: "How does voting work?",
+            answer: "Register and log in ahead of any election. Once the period opens, choose your preferred candidate and submit — one verified vote per user."
+          }, {
+            title: "Can I see past results?",
+            answer: "Yes. Head over to the Past Results page to explore the outcome of previous voting sessions you participated in."
+          }, {
+            title: "Is my vote secure?",
+            answer: "Absolutely. Votes are tied to authenticated accounts, stored securely, and only published after the admin releases them."
+          }].map(({ title, answer }) => (
+            <div key={title} className="glass-card px-6 py-6 text-left">
+              <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+              <p className="mt-3 text-sm text-slate-600">{answer}</p>
+            </div>
+          ))}
         </div>
       </div>
     );

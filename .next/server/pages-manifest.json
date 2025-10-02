@@ -2,9 +2,6 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/vote": "pages/vote.js",
-  "/admin": "pages/admin.js",
-  "/login": "pages/login.js",
   "/register": "pages/register.js",
-  "/past-results": "pages/past-results.js"
+  "/login": "pages/login.js"
 }

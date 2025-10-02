@@ -1,3 +1,35 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+body {
+  @apply bg-white text-slate-900 min-h-screen antialiased;
+  background-color: #ffffff;
+}
+
+a {
+  @apply transition-colors duration-200;
+}
+
+.glass-panel {
+  @apply rounded-3xl border border-slate-200 bg-white/90 backdrop-blur-sm shadow-lg shadow-slate-300/50;
+}
+
+.glass-card {
+  @apply rounded-3xl border border-slate-200 bg-white shadow-md shadow-slate-300/40 px-6 py-6;
+}
+
+.page-enter {
+  animation: fade-in 0.4s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

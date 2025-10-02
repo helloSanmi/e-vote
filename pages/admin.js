@@ -1,6 +1,7 @@
 // frontend/pages/admin.js
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
+import nigeriaLGAs from "../data/nigeria-lgas.json";
 
 const serverUrl = process.env.NEXT_PUBLIC_API_URL;
 const placeholderImage = "/placeholder.svg";
@@ -8,12 +9,12 @@ const placeholderImage = "/placeholder.svg";
 function PopupModal({ show, message, onClose }) {
   if (!show) return null;
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded shadow-md max-w-sm w-full text-center">
-        <p className="mb-4 text-gray-700">{message}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur">
+      <div className="glass-card w-full max-w-sm px-6 py-6 text-center">
+        <p className="text-sm text-slate-700">{message}</p>
         <button
           onClick={onClose}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+          className="mt-4 inline-flex rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
         >
           OK
         </button>
@@ -30,7 +31,8 @@ export default function Admin() {
 
   const [name, setName] = useState("");
   const [lga, setLga] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
+  const [photoPreview, setPhotoPreview] = useState("");
+  const photoInputRef = useRef(null);
 
   // Note the change below: we'll treat 'published' as a boolean instead of 0 or 1
   const [unpublishedCandidates, setUnpublishedCandidates] = useState([]);
@@ -203,21 +205,46 @@ export default function Admin() {
     if (selectedPastPeriod) loadPastPeriodData(selectedPastPeriod);
   }, [selectedPastPeriod]);
 
+  const handlePhotoChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setPhotoPreview("");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPhotoPreview(reader.result || "");
+    };
+    reader.onerror = () => {
+      setPhotoPreview("");
+    };
+    reader.readAsDataURL(file);
+  };
+
   const addCandidate = async () => {
     if (!name.trim() || !lga.trim()) {
       setMessage("Please provide candidate name and LGA");
       setShowPopup(true);
       return;
     }
+    const payload = { name, lga };
+    if (photoPreview) {
+      payload.photoData = photoPreview;
+    }
+
     const res = await fetch(`${serverUrl}/api/admin/add-candidate`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ name, lga, photoUrl }),
+      body: JSON.stringify(payload),
     });
     if (res.ok) {
       setName("");
       setLga("");
-      setPhotoUrl("");
+      setPhotoPreview("");
+      if (photoInputRef.current) {
+        photoInputRef.current.value = "";
+      }
       setMessage("Candidate added successfully");
       setShowPopup(true);
       loadCandidates();
@@ -348,21 +375,34 @@ export default function Admin() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 mt-10">
+    <div className="mx-auto max-w-6xl space-y-10 py-2">
       <PopupModal show={showPopup} message={message} onClose={closePopup} />
 
-      <h1 className="text-3xl font-bold text-gray-800 text-center">Administrative Page</h1>
+      <section className="glass-card px-8 py-10 text-center">
+        <h1 className="text-3xl font-bold text-slate-900">Administrative Control Center</h1>
+        <p className="mt-3 text-slate-600">
+          Manage candidates, orchestrate voting periods, and monitor live participation in one streamlined workspace.
+        </p>
+      </section>
 
-      <div className="flex space-x-4 border-b pb-2 justify-center">
+      <div className="glass-card flex flex-wrap items-center justify-center gap-4 px-6 py-4">
         <button
           onClick={() => setActiveTab("current")}
-          className={`pb-2 ${activeTab === "current" ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-600"}`}
+          className={`rounded-full px-5 py-2 text-sm font-semibold transition ${
+            activeTab === "current"
+              ? "bg-blue-600 text-white shadow-sm"
+              : "border border-slate-200 text-slate-600 hover:border-blue-400 hover:text-blue-600"
+          }`}
         >
           Current Period
         </button>
         <button
           onClick={() => setActiveTab("past")}
-          className={`pb-2 ${activeTab === "past" ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-600"}`}
+          className={`rounded-full px-5 py-2 text-sm font-semibold transition ${
+            activeTab === "past"
+              ? "bg-blue-600 text-white shadow-sm"
+              : "border border-slate-200 text-slate-600 hover:border-blue-400 hover:text-blue-600"
+          }`}
         >
           Past Periods
         </button>
@@ -370,82 +410,119 @@ export default function Admin() {
 
       {activeTab === "current" && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="bg-white p-6 rounded-lg shadow space-y-4 border border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800">Add Candidate (Unpublished)</h2>
-            <div className="flex flex-col sm:flex-row gap-4">
+          <div className="glass-card space-y-6 px-6 py-8">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">Add Candidate (Unpublished)</h2>
+              <p className="mt-1 text-sm text-slate-600">Prepare candidate profiles ahead of publication.</p>
+            </div>
+            <div className="flex flex-col gap-4 sm:flex-row">
               <div className="w-full">
-                <label className="block text-gray-700 text-sm mb-1">Candidate Name</label>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Candidate Name</label>
                 <input
                   placeholder="Candidate Name"
-                  className="border p-2 rounded w-full"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
               </div>
               <div className="w-full">
-                <label className="block text-gray-700 text-sm mb-1">LGA</label>
-                <input
-                  placeholder="LGA"
-                  className="border p-2 rounded w-full"
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Local Government Area</label>
+                <select
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                   value={lga}
                   onChange={(e) => setLga(e.target.value)}
-                />
+                >
+                  <option value="">Select LGA</option>
+                  {nigeriaLGAs.map(({ state, lgas }) => (
+                    <optgroup key={state} label={state}>
+                      {lgas.map((lgaName) => (
+                        <option key={`${state}-${lgaName}`} value={lgaName}>
+                          {lgaName}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
             </div>
             <div>
-              <label className="block text-gray-700 text-sm mb-1">Photo URL</label>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Candidate Photo</label>
               <input
-                placeholder="Photo URL"
-                className="border p-2 rounded w-full"
-                value={photoUrl}
-                onChange={(e) => setPhotoUrl(e.target.value)}
+                type="file"
+                accept="image/*"
+                ref={photoInputRef}
+                onChange={handlePhotoChange}
+                className="mt-2 w-full rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
+              {photoPreview && (
+                <div className="mt-3 flex items-center gap-3">
+                  <img
+                    src={photoPreview}
+                    alt="Candidate preview"
+                    className="h-16 w-16 rounded-full border border-slate-200 object-cover shadow-sm"
+                  />
+                  <button
+                    onClick={() => {
+                      setPhotoPreview("");
+                      if (photoInputRef.current) {
+                        photoInputRef.current.value = "";
+                      }
+                    }}
+                    className="text-sm font-semibold text-red-600 transition hover:text-red-500"
+                  >
+                    Remove photo
+                  </button>
+                </div>
+              )}
             </div>
             <button
               onClick={addCandidate}
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition"
+              className="flex w-full items-center justify-center gap-3 rounded-full bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500"
             >
               Add Candidate
             </button>
 
-            <div className="mt-4 border p-4 rounded bg-gray-50 max-h-64 overflow-auto">
-              <h3 className="text-lg font-bold mb-2">Unpublished Candidates</h3>
+            <div className="max-h-64 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+              <h3 className="text-lg font-semibold text-slate-900">Unpublished Candidates</h3>
               {unpublishedCandidates.length === 0 && (
-                <p className="text-gray-600 text-sm">No unpublished candidates yet</p>
+                <p className="mt-2 text-sm text-slate-600">No unpublished candidates yet.</p>
               )}
-              {unpublishedCandidates.map((c) => (
-                <div key={c.id} className="flex justify-between items-center mb-2 bg-white p-2 rounded">
-                  <span className="text-sm text-gray-700">
-                    {c.name} ({c.lga})
-                  </span>
-                  <button
-                    onClick={() => removeCandidate(c.id)}
-                    className="bg-red-600 text-white px-2 py-1 rounded text-sm hover:bg-red-700 transition"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
+              <div className="mt-3 space-y-2">
+                {unpublishedCandidates.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                    <span>{c.name} ({c.lga})</span>
+                    <button
+                      onClick={() => removeCandidate(c.id)}
+                      className="rounded-full bg-red-500 px-3 py-1 text-xs font-semibold text-white transition hover:bg-red-400"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-lg shadow space-y-4 border border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800">Start Voting & Live Results</h2>
-            <div className="flex flex-col sm:flex-row gap-4">
+          <div className="glass-card space-y-6 px-6 py-8">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">Start Voting & Live Results</h2>
+              <p className="mt-1 text-sm text-slate-600">Schedule the election window and keep tabs on real-time performance.</p>
+            </div>
+            <div className="flex flex-col gap-4 sm:flex-row">
               <div className="w-full">
-                <label className="block text-gray-700 text-sm mb-1">Start Time</label>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Start Time</label>
                 <input
                   type="datetime-local"
-                  className="border p-2 rounded w-full"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
                 />
               </div>
               <div className="w-full">
-                <label className="block text-gray-700 text-sm mb-1">End Time</label>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">End Time</label>
                 <input
                   type="datetime-local"
-                  className="border p-2 rounded w-full"
+                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
                 />
@@ -453,27 +530,27 @@ export default function Admin() {
             </div>
             <button
               onClick={startVoting}
-              className="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 transition"
+              className="flex w-full items-center justify-center gap-3 rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-400"
             >
               Start Voting
             </button>
 
             {period && (
-              <div className="text-gray-600 mt-4 text-sm">
-                <p>Current Period ID: {period.id}</p>
-                <p>Starts: {new Date(period.startTime).toLocaleString()}</p>
-                <p>Ends: {new Date(period.endTime).toLocaleString()}</p>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                <p className="font-semibold text-blue-600">Current Period ID: {period.id}</p>
+                <p className="mt-1">Starts: {new Date(period.startTime).toLocaleString()}</p>
+                <p className="mt-1">Ends: {new Date(period.endTime).toLocaleString()}</p>
                 {!asBool(period.resultsPublished) && (
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-4 flex flex-wrap gap-3">
                     <button
                       onClick={endVotingEarly}
-                      className="bg-red-600 text-white py-1 px-3 rounded hover:bg-red-700 transition"
+                      className="rounded-full bg-red-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-red-400"
                     >
                       End Voting Now
                     </button>
                     <button
                       onClick={publishResults}
-                      className="bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 transition"
+                      className="rounded-full bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-500"
                     >
                       Publish Results
                     </button>
@@ -482,67 +559,78 @@ export default function Admin() {
               </div>
             )}
 
-            <h3 className="text-lg font-bold mt-6">Published Candidates</h3>
-            <div className="border p-4 rounded bg-gray-50 max-h-48 overflow-auto">
-            {publishedCandidates.length === 0 && (
-                <p className="text-gray-600 text-sm">No published candidates yet</p>
-              )}
-              {publishedCandidates.map((c) => (
-                <div key={c.id} className="text-sm text-gray-700 mb-2 bg-white p-2 rounded">
-                  {c.name} ({c.lga})
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Published Candidates</h3>
+              <div className="mt-3 max-h-48 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                {publishedCandidates.length === 0 && (
+                  <p className="text-sm text-slate-600">No published candidates yet.</p>
+                )}
+                <div className="mt-2 space-y-2">
+                  {publishedCandidates.map((c) => (
+                    <div key={c.id} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                      {c.name} ({c.lga})
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
 
-            <h3 className="text-lg font-bold mt-6">Live Results</h3>
-            <div className="border p-4 rounded bg-gray-50 max-h-48 overflow-auto">
-              {results.length === 0 && <p className="text-gray-600 text-sm">No votes yet</p>}
-              {results.length > 0 && (
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="bg-gray-200">
-                      <th className="border p-2">Candidate</th>
-                      <th className="border p-2">LGA</th>
-                      <th className="border p-2">Votes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.map((r) => (
-                      <tr key={r.name}>
-                        <td className="border p-2">{r.name}</td>
-                        <td className="border p-2">{r.lga}</td>
-                        <td className="border p-2">{r.votes}</td>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Live Results</h3>
+              <div className="mt-3 max-h-48 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                {results.length === 0 && <p className="text-sm text-slate-600">No votes yet.</p>}
+                {results.length > 0 && (
+                  <table className="w-full border-collapse text-left text-sm text-slate-700">
+                    <thead>
+                      <tr className="text-xs uppercase tracking-wide text-blue-600">
+                        <th className="border-b border-slate-200 py-2 font-semibold">Candidate</th>
+                        <th className="border-b border-slate-200 py-2 font-semibold">LGA</th>
+                        <th className="border-b border-slate-200 py-2 font-semibold text-right">Votes</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                    </thead>
+                    <tbody>
+                      {results.map((r) => (
+                        <tr key={r.name} className="odd:bg-white">
+                          <td className="py-2 pr-2 text-slate-700">{r.name}</td>
+                          <td className="py-2 pr-2 text-slate-500">{r.lga}</td>
+                          <td className="py-2 text-right font-semibold text-blue-600">{r.votes}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="col-span-1 md:col-span-2 bg-white p-6 rounded-lg shadow space-y-4 border border-gray-200">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-gray-800">Preview Published Candidates</h2>
+          <div className="glass-card col-span-1 space-y-4 px-6 py-8 md:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Preview Published Candidates</h2>
+                <p className="text-sm text-slate-600">Toggle a compact gallery of everyone currently live to voters.</p>
+              </div>
               <button
                 onClick={() => setShowPreview(!showPreview)}
-                className="bg-green-600 text-white py-1 px-3 rounded hover:bg-green-700 transition"
+                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-400"
               >
                 {showPreview ? "Hide Preview" : "Show Preview"}
               </button>
             </div>
             {showPreview && (
-              <div className="border p-4 rounded mb-4 space-y-4 bg-gray-50 max-h-64 overflow-auto">
-                <h3 className="text-lg font-bold">Published Candidates</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="max-h-64 overflow-auto rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <h3 className="text-lg font-semibold text-slate-900">Published Candidates</h3>
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {publishedCandidates.map((c) => (
-                    <div key={c.id} className="border p-4 rounded flex flex-col items-center bg-white">
+                    <div key={c.id} className="glass-card flex flex-col items-center gap-3 px-4 py-5 text-center">
                       <img
                         src={c.photoUrl || placeholderImage}
                         alt={c.name}
-                        className="w-24 h-24 rounded-full mb-2 object-cover"
+                        className="h-20 w-20 rounded-full border border-slate-200 object-cover shadow-sm"
                       />
-                      <h4 className="font-semibold text-center text-gray-700 text-sm">{c.name}</h4>
-                      <p className="text-xs text-center text-gray-600">{c.lga}</p>
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900">{c.name}</h4>
+                        <p className="text-xs text-slate-500">{c.lga}</p>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -553,27 +641,35 @@ export default function Admin() {
       )}
 
       {activeTab === "past" && (
-        <div className="bg-white p-6 rounded-lg shadow space-y-4 border border-gray-200">
-          <div className="flex flex-wrap justify-between items-center gap-2">
-            <h2 className="text-xl font-semibold text-gray-800">Past Voting Periods</h2>
-            <div className="flex gap-2">
+        <div className="glass-card space-y-6 px-6 py-8">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">Past Voting Periods</h2>
+              <p className="text-sm text-slate-600">Review historic sessions, manage archives, or remove outdated periods.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={loadAllPeriods}
-                className="bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-3 rounded"
+                className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-blue-400 hover:text-blue-600"
               >
                 Refresh Periods
               </button>
               <button
                 onClick={deletePastPeriod}
                 disabled={!selectedPastPeriod}
-                className={`py-1 px-3 rounded text-white transition ${selectedPastPeriod ? "bg-red-600 hover:bg-red-700" : "bg-red-300 cursor-not-allowed"}`}
+                className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                  selectedPastPeriod
+                    ? "bg-red-500 text-white shadow-sm hover:bg-red-400"
+                    : "bg-red-100 text-red-300 cursor-not-allowed"
+                }`}
               >
                 Delete Selected Period
               </button>
             </div>
           </div>
+
           <select
-            className="border p-2 rounded w-full"
+            className="w-full rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
             value={selectedPastPeriod || ""}
             onChange={(e) => setSelectedPastPeriod(e.target.value)}
           >
@@ -581,51 +677,53 @@ export default function Admin() {
             {periods
               .filter((p) => p.id !== (period ? period.id : null))
               .map((p) => (
-                <option key={p.id} value={p.id}>
+                <option key={p.id} value={p.id} className="bg-white text-slate-700">
                   Period {p.id} (Starts: {new Date(p.startTime).toLocaleString()}, Ends: {new Date(p.endTime).toLocaleString()})
                 </option>
               ))}
           </select>
 
           {selectedPastPeriod && pastCandidates.length > 0 && (
-            <>
-              <h3 className="text-lg font-bold text-gray-700 mt-4">Candidates for Period {selectedPastPeriod}</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-6">
+              <h3 className="text-lg font-semibold text-slate-900">Candidates for Period {selectedPastPeriod}</h3>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 {pastCandidates.map((c) => (
-                  <div key={c.id} className="border p-4 rounded flex flex-col items-center bg-gray-50">
+                  <div key={c.id} className="glass-card flex flex-col items-center gap-3 px-4 py-5 text-center">
                     <img
                       src={c.photoUrl || placeholderImage}
                       alt={c.name}
-                      className="w-24 h-24 rounded-full mb-2 object-cover"
+                      className="h-20 w-20 rounded-full border border-slate-200 object-cover shadow-sm"
                     />
-                    <h4 className="font-semibold text-center text-gray-700">{c.name}</h4>
-                    <p className="text-sm text-center text-gray-600">{c.lga}</p>
+                    <div>
+                      <h4 className="text-sm font-semibold text-slate-900">{c.name}</h4>
+                      <p className="text-xs text-slate-500">{c.lga}</p>
+                    </div>
                   </div>
                 ))}
               </div>
 
-              <h3 className="text-lg font-bold text-gray-700 mt-8">Results for Period {selectedPastPeriod}</h3>
-              <div className="max-h-64 overflow-auto">
-                <table className="w-full border-collapse text-left text-sm mt-4">
-                  <thead>
-                    <tr className="bg-gray-200">
-                      <th className="border p-2">Candidate</th>
-                      <th className="border p-2">LGA</th>
-                      <th className="border p-2">Votes</th>
+              <h3 className="text-lg font-semibold text-slate-900">Results for Period {selectedPastPeriod}</h3>
+              <div className="max-h-64 overflow-auto rounded-2xl border border-slate-200 bg-slate-50">
+                <table className="w-full border-collapse text-left text-sm text-slate-700">
+                  <thead className="text-xs uppercase tracking-wide text-blue-600">
+                    <tr>
+                      <th className="border-b border-slate-200 px-4 py-2 font-semibold">Candidate</th>
+                      <th className="border-b border-slate-200 px-4 py-2 font-semibold">LGA</th>
+                      <th className="border-b border-slate-200 px-4 py-2 text-right font-semibold">Votes</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pastResults.map((r) => (
-                      <tr key={r.name}>
-                        <td className="border p-2">{r.name}</td>
-                        <td className="border p-2">{r.lga}</td>
-                        <td className="border p-2">{r.votes}</td>
+                      <tr key={r.name} className="odd:bg-white">
+                        <td className="px-4 py-2 text-slate-700">{r.name}</td>
+                        <td className="px-4 py-2 text-slate-500">{r.lga}</td>
+                        <td className="px-4 py-2 text-right font-semibold text-blue-600">{r.votes}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </>
+            </div>
           )}
         </div>
       )}
